@@ -25,8 +25,8 @@ jobs:
         run: npm run build
         working-directory: frontend
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_URL: https://wwoowwnjrepokmjgxhlw.supabase.co
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3b293d25qcmVwb2ttamd4aGx3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgyNzcxMjEsImV4cCI6MjA2Mzg1MzEyMX0.4wWrTBgxMNYmozZjwujvJ9g4JV1e7pB-Kj85sXMncfM
 
       - name: Install Netlify CLI
         run: npm install -g netlify-cli
