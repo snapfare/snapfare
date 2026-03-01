@@ -18,6 +18,9 @@ import json
 import os
 import subprocess
 import sys
+
+# Ensure subprocess stdout/stderr handles Unicode on Windows (e.g. → in route strings)
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 import logging
 import time
 from logging.handlers import RotatingFileHandler
