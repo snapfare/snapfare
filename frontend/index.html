@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>SnapFare – Die besten Flugdeals ab der Schweiz</title>
+    <meta
+      name="description"
+      content="Erhalte die besten Flugdeals ab der Schweiz direkt in deine Inbox. SnapFare findet automatisch günstige Flüge, Meilendeals und Business-Class Angebote."
+    />
+    <meta
+      name="keywords"
+      content="Flugdeals Schweiz, günstige Flüge Zürich, Flugschnäppchen, Meilendeals, Business Class Angebote, Reisedeals"
+    />
+    <meta name="author" content="SnapFare" />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Canonical -->
+    <link rel="canonical" href="https://snapfare.ch/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://snapfare.ch/" />
+    <meta property="og:title" content="SnapFare – Die besten Flugdeals ab der Schweiz" />
+    <meta
+      property="og:description"
+      content="Erhalte die besten Flugdeals ab der Schweiz direkt in deine Inbox. Automatische Flugsuche, Meilendeals und Business-Class Angebote."
+    />
+    <meta property="og:image" content="https://snapfare.ch/og-image.png" />
+    <meta property="og:locale" content="de_CH" />
+    <meta property="og:site_name" content="SnapFare" />
+
+    <!-- Twitter / X (preview only, no tracking) -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://snapfare.ch/" />
+    <meta name="twitter:title" content="SnapFare – Die besten Flugdeals ab der Schweiz" />
+    <meta
+      name="twitter:description"
+      content="Die besten Flugdeals ab der Schweiz. Meilendeals, Business-Class Angebote und Reisedeals automatisch finden."
+    />
+    <meta name="twitter:image" content="https://snapfare.ch/og-image.png" />
+  </head>
+
+  <body>
+    <!-- Cookie / Tracking Consent Banner -->
+    <div
+      id="cookie-banner"
+      style="
+        position: fixed;
+        bottom: 40px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(320px, calc(100vw - 40px));
+        background: rgba(20, 20, 20, 0.9); /* less transparent */
+        color: #ffffff;
+        border: 1px solid rgba(255,255,255,0.25);
+        border-radius: 18px;
+        padding: 32px 20px; /* MUCH taller */
+        display: none;
+        z-index: 9999;
+        font-family: Inter, system-ui, sans-serif;
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+      "
+    >
+      <!-- Text -->
+      <div
+        style="
+          font-size: 14px;
+          line-height: 1.6;
+          color: #ffffff;
+          margin-bottom: 10px;
+        "
+      >
+        Wir verwenden Cookies für die besten Deals!<br>
+        (z.&nbsp;B. Reichweitenmessung & Affiliate-Links)
+      </div>
+    
+      <!-- Buttons -->
+      <div style="display: flex; gap: 10px;">
+        <!-- Accept (primary, slightly stronger like hover state) -->
+        <button
+          id="cookie-accept"
+          style="
+            flex: 1;
+            background: rgba(255,255,255,0.15); /* hover:bg-white/15 */
+            color: #ffffff;
+            border: 1px solid rgba(255,255,255,0.30); /* hover:border-white/30 */
+            padding: 8px 10px;
+            border-radius: 9999px; /* rounded-full */
+            font-size: 12.5px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+          "
+        >
+          Akzeptieren
+        </button>
+    
+        <!-- Decline (normal glass) -->
+        <button
+          id="cookie-decline"
+          style="
+            flex: 1;
+            background: rgba(255,255,255,0.10); /* bg-white/10 */
+            color: rgba(255,255,255,0.9);
+            border: 1px solid rgba(255,255,255,0.20); /* border-white/20 */
+            padding: 8px 10px;
+            border-radius: 9999px; /* rounded-full */
+            font-size: 12.5px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+          "
+        >
+          Ablehnen
+        </button>
+      </div>
+    </div>
+
+    <div id="root"></div>
+
+    <!-- Structured Data: Organization -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "SnapFare",
+        "url": "https://snapfare.ch",
+        "logo": "https://snapfare.ch/og-image.png",
+        "description": "SnapFare findet automatisch die besten Flugdeals ab der Schweiz – inklusive Meilendeals und Business-Class Angeboten.",
+        "areaServed": {
+          "@type": "Country",
+          "name": "Switzerland"
+        }
+      }
+    </script>
+
+    <!-- Structured Data: Product -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": "SnapFare Premium",
+        "description": "Premium Zugang zu exklusiven Flugdeals, Business-Class Angeboten und Meilendeals",
+        "brand": {
+          "@type": "Brand",
+          "name": "SnapFare"
+        },
+        "offers": {
+          "@type": "Offer",
+          "url": "https://snapfare.ch/premium",
+          "priceCurrency": "CHF",
+          "price": "49.00",
+          "priceValidUntil": "2026-12-31",
+          "availability": "https://schema.org/InStock"
+        }
+      }
+    </script>
+
+    <!-- App entry -->
+    <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Consent logic (NO tracking loaded here) -->
+    <script>
+      (function () {
+        const key = "tracking_consent";
+        const banner = document.getElementById("cookie-banner");
+
+        if (!localStorage.getItem(key)) {
+          banner.style.display = "block";
+        }
+
+        document.getElementById("cookie-accept")?.addEventListener("click", () => {
+          localStorage.setItem(key, "granted");
+          banner.style.display = "none";
+        });
+
+        document.getElementById("cookie-decline")?.addEventListener("click", () => {
+          localStorage.setItem(key, "denied");
+          banner.style.display = "none";
+        });
+      })();
+    </script>
+
+    <script>
+      function loadTikTokPixel() {
+        if (window.ttq) return; // prevent double load
+    
+        !function (w, d, t) {
+          w.TiktokAnalyticsObject = t;
+          var ttq = w[t] = w[t] || [];
+          ttq.methods = [
+            "page","track","identify","instances","debug","on","off",
+            "once","ready","alias","group","enableCookie","disableCookie"
+          ];
+          ttq.setAndDefer = function (t, e) {
+            t[e] = function () {
+              t.push([e].concat(Array.prototype.slice.call(arguments, 0)));
+            };
+          };
+          for (var i = 0; i < ttq.methods.length; i++) {
+            ttq.setAndDefer(ttq, ttq.methods[i]);
+          }
+          ttq.load = function (e) {
+            var s = d.createElement("script");
+            s.type = "text/javascript";
+            s.async = true;
+            s.src =
+              "https://analytics.tiktok.com/i18n/pixel/events.js?sdkid=" +
+              e +
+              "&lib=" +
+              t;
+            var x = d.getElementsByTagName("script")[0];
+            x.parentNode.insertBefore(s, x);
+          };
+    
+          ttq.load("D56KEHBC77U40DIQH5KG"); // your pixel ID
+          ttq.page();
+        }(window, document, "ttq");
+      }
+    
+      // Load immediately if consent already granted
+      if (localStorage.getItem("tracking_consent") === "granted") {
+        loadTikTokPixel();
+      }
+    
+      // Load when user accepts
+      document
+        .getElementById("cookie-accept")
+        ?.addEventListener("click", () => {
+          loadTikTokPixel();
+        });
+    </script>
+
+    <script>
+      function loadGoogleAnalytics() {
+        if (window.gtag) return; // prevent double load
+    
+        const s = document.createElement("script");
+        s.async = true;
+        s.src = "https://www.googletagmanager.com/gtag/js?id=G-0G9TKRS60D";
+        document.head.appendChild(s);
+    
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        window.gtag = gtag;
+    
+        gtag("js", new Date());
+
+          // TEMPORARY: track all users (easy to remove)
+          gtag('consent', 'update', {
+            ad_storage: 'granted',
+            analytics_storage: 'granted'
+          });
+        
+        gtag("config", "G-0G9TKRS60D", {
+          anonymize_ip: true
+        });
+      }
+    
+      // Load immediately if already accepted
+      if (localStorage.getItem("tracking_consent") === "granted") {
+        loadGoogleAnalytics();
+      }
+    
+      // Load on accept
+      document
+        .getElementById("cookie-accept")
+        ?.addEventListener("click", () => {
+          loadGoogleAnalytics();
+        });
+    </script>
+    
+  </body>
+</html>

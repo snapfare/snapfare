@@ -1,0 +1,26 @@
+# Core data and HTTP
+pandas
+requests
+
+# Scraping
+beautifulsoup4
+
+# Templating
+jinja2
+
+# APIs/SDKs
+amadeus
+openai
+supabase
+scrapingbee
+
+# Backend runtime (used by backend/main.py)
+fastapi
+uvicorn
+python-dotenv
+playwright
+feedparser
+apify-client
+
+# Data for airports / miles estimates
+airportsdata

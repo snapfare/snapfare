@@ -1,0 +1,272 @@
+﻿{
+  "default_command": "deals-html",
+  "default_mode": "verify_td2_am1_persist_no_llm",
+  "modes": {
+    "smoke_no_llm_1_each": {
+      "description": "Smoke: 1 deal de Travel-Dealz y 1 de Amadeus sin LLM",
+      "persist": false,
+      "sources": ["travel-dealz"],
+      "limit": 100,
+      "scrape": {
+        "traveldealz": 1,
+        "secretflying": 0
+      },
+      "done_limit": 100,
+      "llm": {
+        "action": "off"
+      },
+      "html": {
+        "max_items": 1,
+        "display_currency": "CHF",
+        "fx_eur_to_chf": 0.91
+      },
+      "amadeus": {
+        "origins": ["ZRH"],
+        "months": 4,
+        "calls": 1
+      }
+    },
+
+    "scrape_raw_td5_am5_persist": {
+      "description": "Scrape test (RAW): 5 Travel-Dealz + refresco Amadeus, sin enrichment (ni LLM ni heurísticos). Persist=true para poder renderizar Amadeus desde Supabase.",
+      "persist": true,
+      "sources": ["travel-dealz"],
+      "limit": 5,
+      "scrape": {
+        "traveldealz": 5,
+        "secretflying": 0
+      },
+      "done_limit": 0,
+      "llm": {
+        "action": "off"
+      },
+      "deterministic": {
+        "action": "off"
+      },
+      "html": {
+        "max_items": 5,
+        "display_currency": "CHF",
+        "fx_eur_to_chf": 0.91
+      },
+      "timeout_amadeus": 120,
+      "amadeus": {
+        "origins": ["ZRH"],
+        "months": 4,
+        "calls": 5
+      }
+    },
+
+    "verify_td1_am1_persist_llm_fill": {
+      "description": "Verificación: persistir 1 Travel-Dealz + refresco Amadeus (1 llamada), LLM FILL (millas + baggage).",
+      "persist": true,
+      "sources": ["travel-dealz"],
+      "limit": 100,
+      "scrape": {
+        "traveldealz": 1,
+        "secretflying": 0
+      },
+      "done_limit": 1000,
+      "scraping_overfetch_travel_dealz_min": 30,
+      "scraping_overfetch_travel_dealz_max": 200,
+      "llm": {
+        "action": "fill",
+        "max_items": 1,
+        "allow_amadeus": true,
+        "allucinate": false
+      },
+      "openai": {
+        "min_seconds_between_calls": 3,
+        "max_retries": 2,
+        "retry_backoff_seconds": 2
+      },
+      "html": {
+        "max_items": 10,
+        "display_currency": "CHF",
+        "fx_eur_to_chf": 0.91
+      },
+      "amadeus": {
+        "origins": ["ZRH"],
+        "months": 4,
+        "calls": 1
+      }
+    },
+
+    "verify_td1_am1_persist_no_llm": {
+      "description": "Verificación: persistir 1 Travel-Dealz + refresco Amadeus (1 llamada), sin LLM.",
+      "persist": true,
+      "sources": ["travel-dealz"],
+      "limit": 100,
+      "scrape": {
+        "traveldealz": 1,
+        "secretflying": 0
+      },
+      "done_limit": 1000,
+      "scraping_overfetch_travel_dealz_min": 30,
+      "scraping_overfetch_travel_dealz_max": 200,
+      "llm": {
+        "action": "off"
+      },
+      "html": {
+        "max_items": 10,
+        "display_currency": "CHF",
+        "fx_eur_to_chf": 0.91
+      },
+      "amadeus": {
+        "origins": ["ZRH"],
+        "months": 4,
+        "calls": 1
+      }
+    },
+
+    "verify_td1_am1_persist_llm_correct": {
+      "description": "Verificación: persistir 1 Travel-Dealz + refresco Amadeus (1 llamada), LLM CORRECT (validar/corregir todos los campos).",
+      "persist": true,
+      "sources": ["travel-dealz"],
+      "limit": 100,
+      "scrape": {
+        "traveldealz": 1,
+        "secretflying": 0
+      },
+      "done_limit": 1000,
+      "scraping_overfetch_travel_dealz_min": 30,
+      "scraping_overfetch_travel_dealz_max": 200,
+      "llm": {
+        "action": "correct",
+        "max_items": 1,
+        "allow_amadeus": true,
+        "allucinate": false
+      },
+      "openai": {
+        "min_seconds_between_calls": 3,
+        "max_retries": 2,
+        "retry_backoff_seconds": 2
+      },
+      "html": {
+        "max_items": 10,
+        "display_currency": "CHF",
+        "fx_eur_to_chf": 0.91
+      },
+      "amadeus": {
+        "origins": ["ZRH"],
+        "months": 4,
+        "calls": 1
+      }
+    },
+
+    "verify_td3_persist_no_llm": {
+      "description": "Verificación: persistir 3 Travel-Dealz (mix .de + .com), sin Amadeus y sin LLM. Hecho para inspección manual de filas en Supabase.",
+      "persist": true,
+      "sources": ["travel-dealz"],
+      "limit": 100,
+      "scrape": {
+        "traveldealz": 3,
+        "secretflying": 0
+      },
+      "done_limit": 0,
+      "scraping_overfetch_travel_dealz_min": 30,
+      "scraping_overfetch_travel_dealz_max": 200,
+      "llm": {
+        "action": "off"
+      },
+      "html": {
+        "max_items": 10,
+        "display_currency": "CHF",
+        "fx_eur_to_chf": 0.91
+      },
+      "amadeus": {
+        "origins": ["ZRH"],
+        "months": 4,
+        "calls": 0
+      }
+    },
+
+    "verify_td3_next_persist_no_llm": {
+      "description": "Verificación: persistir OTROS 3 Travel-Dealz (saltando links ya 'done' en source_articles), sin Amadeus y sin LLM. Útil para repetir pruebas con artículos distintos.",
+      "persist": true,
+      "sources": ["travel-dealz"],
+      "limit": 100,
+      "scrape": {
+        "traveldealz": 3,
+        "secretflying": 0
+      },
+      "done_limit": 10000,
+      "scraping_overfetch_travel_dealz_min": 30,
+      "scraping_overfetch_travel_dealz_max": 200,
+      "llm": {
+        "action": "off"
+      },
+      "html": {
+        "max_items": 10,
+        "display_currency": "CHF",
+        "fx_eur_to_chf": 0.91
+      },
+      "amadeus": {
+        "origins": ["ZRH"],
+        "months": 4,
+        "calls": 0
+      }
+    },
+
+    "verify_td2_am1_persist_no_llm": {
+      "description": "Verificación: persistir 2 Travel-Dealz (idealmente 1x .de + 1x .com) + refresco Amadeus (1 llamada), sin LLM.",
+      "persist": true,
+      "sources": ["travel-dealz"],
+      "limit": 100,
+      "scrape": {
+        "traveldealz": 2,
+        "secretflying": 0
+      },
+      "done_limit": 10000,
+      "scraping_overfetch_travel_dealz_min": 50,
+      "scraping_overfetch_travel_dealz_max": 250,
+      "llm": {
+        "action": "off"
+      },
+      "html": {
+        "max_items": 10,
+        "display_currency": "CHF",
+        "fx_eur_to_chf": 0.91
+      },
+      "amadeus": {
+        "origins": ["ZRH"],
+        "months": 4,
+        "calls": 1
+      }
+    },
+
+    "bulk_td500_am1_persist_llm_fill": {
+      "description": "Bulk: persistir ~500 Travel-Dealz (.de + .com) + refresco Amadeus (1 llamada), LLM FILL limitado (1 item).",
+      "persist": true,
+      "sources": ["travel-dealz"],
+      "limit": 500,
+      "scrape": {
+        "traveldealz": 500,
+        "secretflying": 0
+      },
+      "done_limit": 5000,
+      "scraping_overfetch_travel_dealz_min": 100,
+      "scraping_overfetch_travel_dealz_max": 800,
+      "llm": {
+        "action": "fill",
+        "max_items": 1,
+        "allow_amadeus": true,
+        "allucinate": false
+      },
+      "openai": {
+        "min_seconds_between_calls": 3,
+        "max_retries": 2,
+        "retry_backoff_seconds": 2
+      },
+      "html": {
+        "max_items": 20,
+        "display_currency": "CHF",
+        "fx_eur_to_chf": 0.91
+      },
+      "amadeus": {
+        "origins": ["ZRH"],
+        "months": 4,
+        "calls": 1
+      }
+    }
+  }
+}

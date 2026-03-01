@@ -1,0 +1,234 @@
+{
+  "SFO": {
+    "region": "Americas",
+    "cheap_months": [2,3,4,5,10,11,12],
+    "expensive_months": [6,7,8],
+    "depart_weekdays": ["Tue","Wed","Thu"],
+    "return_weekdays": ["Mon","Tue","Wed"],
+    "trip_lengths": [10,12,14,16]
+  },
+  "MIA": {
+    "region": "Americas",
+    "cheap_months": [1,2,3,4,9,10,11],
+    "expensive_months": [12],
+    "depart_weekdays": ["Tue","Thu"],
+    "return_weekdays": ["Mon","Tue"],
+    "trip_lengths": [7,9,12]
+  },
+  "PUJ": {
+    "region": "Americas",
+    "cheap_months": [5,6,9,10,11],
+    "expensive_months": [12,1,2,3,4],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Tue"],
+    "trip_lengths": [10,12]
+  },
+  "JFK": {
+    "region": "Americas",
+    "cheap_months": [2,3,4,5,9,10,11],
+    "expensive_months": [6,7,8,12],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Tue","Wed"],
+    "trip_lengths": [5,7,10,14]
+  },
+  "CPT": {
+    "region": "Africa",
+    "cheap_months": [2,3,4,5,8,9,10],
+    "expensive_months": [12,1],
+    "depart_weekdays": ["Tue","Thu"],
+    "return_weekdays": ["Tue","Wed"],
+    "trip_lengths": [10,12,14]
+  },
+  "JNB": {
+    "region": "Africa",
+    "cheap_months": [2,3,4,5,6,9,10,11],
+    "expensive_months": [12],
+    "depart_weekdays": ["Tue","Thu"],
+    "return_weekdays": ["Tue"],
+    "trip_lengths": [10,12,14]
+  },
+  "MLE": {
+    "region": "IndianOcean",
+    "cheap_months": [5,6,7,9,10,11],
+    "expensive_months": [12,1,2,3,4],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Tue","Wed"],
+    "trip_lengths": [7,9,10]
+  },
+  "AUH": {
+    "region": "MiddleEast",
+    "cheap_months": [5,6,7,8,9,11],
+    "expensive_months": [12,1,2],
+    "depart_weekdays": ["Tue","Thu"],
+    "return_weekdays": ["Mon","Tue"],
+    "trip_lengths": [4,5,7]
+  },
+  "DXB": {
+    "region": "MiddleEast",
+    "cheap_months": [5,6,7,8,9,11],
+    "expensive_months": [12,1,2],
+    "depart_weekdays": ["Tue","Thu"],
+    "return_weekdays": ["Mon","Tue"],
+    "trip_lengths": [4,5,7]
+  },
+  "SAW": {
+    "region": "Europe",
+    "cheap_months": [1,2,3,4,5,9,10,11],
+    "expensive_months": [7,8],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Tue"],
+    "trip_lengths": [4,5,7]
+  },
+  "MAD": {
+    "region": "Europe",
+    "cheap_months": [10,11,12,1,2,3],
+    "expensive_months": [6,7,8],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Sun","Mon"],
+    "trip_lengths": [3,4,5]
+  },
+  "LIS": {
+    "region": "Europe",
+    "cheap_months": [11,12,1,2,3],
+    "expensive_months": [6,7,8],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Sun","Mon"],
+    "trip_lengths": [4,5,7]
+  },
+  "FCO": {
+    "region": "Europe",
+    "cheap_months": [11,12,1,2,3],
+    "expensive_months": [6,7,8],
+    "depart_weekdays": ["Tue","Wed","Thu"],
+    "return_weekdays": ["Sun","Mon"],
+    "trip_lengths": [3,4,5]
+  },
+  "PMI": {
+    "region": "Europe",
+    "cheap_months": [4,5,9,10],
+    "expensive_months": [7,8],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Sun","Mon"],
+    "trip_lengths": [3,4,6]
+  },
+  "IBZ": {
+    "region": "Europe",
+    "cheap_months": [5,6,9,10],
+    "expensive_months": [7,8],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Sun","Mon"],
+    "trip_lengths": [3,4,5]
+  },
+  "BCN": {
+    "region": "Europe",
+    "cheap_months": [10,11,12,1,2,3],
+    "expensive_months": [6,7,8],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Sun","Mon"],
+    "trip_lengths": [3,4,5]
+  },
+  "LGW": {
+    "region": "Europe",
+    "cheap_months": [10,11,12,1,2,3],
+    "expensive_months": [6,7,8],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Sun","Mon"],
+    "trip_lengths": [2,3,4]
+  },
+  "LHR": {
+    "region": "Europe",
+    "cheap_months": [10,11,12,1,2,3],
+    "expensive_months": [6,7,8],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Sun","Mon"],
+    "trip_lengths": [2,3,4]
+  },
+  "BER": {
+    "region": "Europe",
+    "cheap_months": [1,2,3,4,5,9,10,11,12],
+    "expensive_months": [7,8],
+    "depart_weekdays": ["Wed"],
+    "return_weekdays": ["Sun","Mon"],
+    "trip_lengths": [2,3,4]
+  },
+  "PRG": {
+    "region": "Europe",
+    "cheap_months": [1,2,3,4,5,9,10,11,12],
+    "expensive_months": [7,8],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Sun","Mon"],
+    "trip_lengths": [2,3,4]
+  },
+  "BUD": {
+    "region": "Europe",
+    "cheap_months": [1,2,3,4,5,9,10,11,12],
+    "expensive_months": [7,8],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Sun","Mon"],
+    "trip_lengths": [2,3,4]
+  },
+  "VIE": {
+    "region": "Europe",
+    "cheap_months": [1,2,3,4,5,9,10,11,12],
+    "expensive_months": [7,8],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Sun","Mon"],
+    "trip_lengths": [2,3,4]
+  },
+  "CPH": {
+    "region": "Europe",
+    "cheap_months": [10,11,12,1,2,3],
+    "expensive_months": [7,8],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Sun","Mon"],
+    "trip_lengths": [2,3,4]
+  },
+  "HND": {
+    "region": "Asia",
+    "cheap_months": [2,3,4,5,10,11,12],
+    "expensive_months": [8,4],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Mon","Tue","Wed"],
+    "trip_lengths": [10,12,14]
+  },
+  "BKK": {
+    "region": "Asia",
+    "cheap_months": [2,3,4,5,6,9,10,11],
+    "expensive_months": [12,1],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Mon","Tue","Wed"],
+    "trip_lengths": [10,12,14]
+  },
+  "SIN": {
+    "region": "Asia",
+    "cheap_months": [2,3,4,5,9,10,11],
+    "expensive_months": [12,1],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Mon","Tue","Wed"],
+    "trip_lengths": [7,9,10]
+  },
+  "MNL": {
+    "region": "Asia",
+    "cheap_months": [2,3,4,5,6,10,11],
+    "expensive_months": [12],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Mon","Tue","Wed"],
+    "trip_lengths": [10,12,16]
+  },
+  "SYD": {
+    "region": "Oceania",
+    "cheap_months": [4,5,6,10,11],
+    "expensive_months": [12,1,2],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Mon","Tue","Wed"],
+    "trip_lengths": [14,16,21]
+  },
+  "AKL": {
+    "region": "Oceania",
+    "cheap_months": [4,5,6,10,11],
+    "expensive_months": [12,1,2],
+    "depart_weekdays": ["Tue","Wed"],
+    "return_weekdays": ["Mon","Tue","Wed"],
+    "trip_lengths": [14,16,21]
+  }
+}
