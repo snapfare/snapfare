@@ -144,7 +144,7 @@ useEffect(() => {
 
       try {
         const res = await fetch(
-          'https://wwoowwnjrepokmjgxhlw.functions.supabase.co/confirm',
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/confirm`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -207,8 +207,14 @@ useEffect(() => {
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-green-500/10 to-blue-500/10"></div>
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 sm:pt-16 lg:pt-20 pb-0">
-          {/* Premium Button */}
-          <div className="absolute top-4 right-4 sm:top-6 sm:right-6 lg:top-8 lg:right-8">
+          {/* Top-right buttons */}
+          <div className="absolute top-4 right-4 sm:top-6 sm:right-6 lg:top-8 lg:right-8 flex items-center gap-2">
+            <a
+              href="/auth"
+              className="bg-white/10 hover:bg-white/20 border border-white/20 text-white px-4 py-2 rounded-lg font-semibold text-sm transition-all duration-300 backdrop-blur-sm"
+            >
+              Dashboard
+            </a>
             <a
               href="/premium"
               className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white px-4 py-2 rounded-lg font-semibold text-sm transition-all duration-300"

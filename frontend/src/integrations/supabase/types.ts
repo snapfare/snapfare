@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "12.2.3 (519615d)"
-  }
   public: {
     Tables: {
       deals: {
@@ -20,108 +15,96 @@ export type Database = {
           created_at: string | null
           title: string | null
           price: number | null
-          link: string | null
           currency: string | null
-          image: string | null
-          cabin_baggage: string | null
-          aircraft: string | null
-          airline: string | null
+          link: string | null
+          booking_url: string | null
+          skyscanner_url: string | null
+          source: string | null
           origin: string | null
           destination: string | null
-          miles: string | null
-          expires_in: string | null
-          booking_url: string | null
-          date_in: string | null
-          date_out: string | null
-          cabin_class: string | null
-          one_way: boolean | null
-          flight: string | null
           origin_iata: string | null
           destination_iata: string | null
-          date_range: string | null
-          source: string | null
-          scoring: string | null
+          airline: string | null
+          aircraft: string | null
+          cabin_class: string | null
+          stops: number | null
+          date_out: string | null
+          date_in: string | null
+          miles: string | null
           flight_duration_minutes: number | null
           flight_duration_display: string | null
           baggage_included: boolean | null
           baggage_pieces_included: number | null
           baggage_allowance_kg: number | null
-          baggage_allowance_display: string | null
-          llm_enriched: boolean | null
-          llm_enriched_fields: Json | null
-          llm_enrichment_version: string | null
+          image: string | null
+          tier: string | null
+          travel_period_display: string | null
+          scoring: string | null
+          expires_in: string | null
         }
         Insert: {
           id?: number
           created_at?: string | null
           title?: string | null
           price?: number | null
-          link?: string | null
           currency?: string | null
-          image?: string | null
-          cabin_baggage?: string | null
-          aircraft?: string | null
-          airline?: string | null
+          link?: string | null
+          booking_url?: string | null
+          skyscanner_url?: string | null
+          source?: string | null
           origin?: string | null
           destination?: string | null
-          miles?: string | null
-          expires_in?: string | null
-          booking_url?: string | null
-          date_in?: string | null
-          date_out?: string | null
-          cabin_class?: string | null
-          one_way?: boolean | null
-          flight?: string | null
           origin_iata?: string | null
           destination_iata?: string | null
-          date_range?: string | null
-          source?: string | null
-          scoring?: string | null
+          airline?: string | null
+          aircraft?: string | null
+          cabin_class?: string | null
+          stops?: number | null
+          date_out?: string | null
+          date_in?: string | null
+          miles?: string | null
           flight_duration_minutes?: number | null
           flight_duration_display?: string | null
           baggage_included?: boolean | null
           baggage_pieces_included?: number | null
           baggage_allowance_kg?: number | null
-          baggage_allowance_display?: string | null
-          llm_enriched?: boolean | null
-          llm_enriched_fields?: Json | null
-          llm_enrichment_version?: string | null
+          image?: string | null
+          tier?: string | null
+          travel_period_display?: string | null
+          scoring?: string | null
+          expires_in?: string | null
         }
         Update: {
           id?: number
           created_at?: string | null
           title?: string | null
           price?: number | null
-          link?: string | null
           currency?: string | null
-          image?: string | null
-          cabin_baggage?: string | null
-          aircraft?: string | null
-          airline?: string | null
+          link?: string | null
+          booking_url?: string | null
+          skyscanner_url?: string | null
+          source?: string | null
           origin?: string | null
           destination?: string | null
-          miles?: string | null
-          expires_in?: string | null
-          booking_url?: string | null
-          date_in?: string | null
-          date_out?: string | null
-          cabin_class?: string | null
-          one_way?: boolean | null
-          flight?: string | null
           origin_iata?: string | null
           destination_iata?: string | null
-          date_range?: string | null
-          source?: string | null
-          scoring?: string | null
+          airline?: string | null
+          aircraft?: string | null
+          cabin_class?: string | null
+          stops?: number | null
+          date_out?: string | null
+          date_in?: string | null
+          miles?: string | null
           flight_duration_minutes?: number | null
           flight_duration_display?: string | null
           baggage_included?: boolean | null
           baggage_pieces_included?: number | null
           baggage_allowance_kg?: number | null
-          baggage_allowance_display?: string | null
-          llm_enriched?: boolean | null
-          llm_enriched_fields?: Json | null
-          llm_enrichment_version?: string | null
+          image?: string | null
+          tier?: string | null
+          travel_period_display?: string | null
+          scoring?: string | null
+          expires_in?: string | null
         }
         Relationships: []
       }
@@ -162,41 +145,34 @@ export type Database = {
         Row: {
           amount_cents: number | null
           created_at: string
-          currency: string | null
+          currency: string
           email: string
-          id: number
-          status: string | null
+          id: string
+          status: string
         }
         Insert: {
           amount_cents?: number | null
           created_at?: string
-          currency?: string | null
+          currency?: string
           email: string
-          id?: number
-          status?: string | null
+          id?: string
+          status?: string
         }
         Update: {
           amount_cents?: number | null
           created_at?: string
-          currency?: string | null
+          currency?: string
           email?: string
-          id?: number
-          status?: string | null
+          id?: string
+          status?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "payments_email_fkey"
-            columns: ["email"]
-            isOneToOne: false
-            referencedRelation: "subscribers"
-            referencedColumns: ["email"]
-          },
-        ]
+        Relationships: []
       }
       subscribers: {
         Row: {
           created_at: string
           email: string
+          id: string
           source: string | null
           status: Database["public"]["Enums"]["subscriber_status"]
           tier: string
@@ -205,6 +181,7 @@ export type Database = {
         Insert: {
           created_at?: string
           email: string
+          id?: string
           source?: string | null
           status?: Database["public"]["Enums"]["subscriber_status"]
           tier?: string
@@ -213,6 +190,7 @@ export type Database = {
         Update: {
           created_at?: string
           email?: string
+          id?: string
           source?: string | null
           status?: Database["public"]["Enums"]["subscriber_status"]
           tier?: string
@@ -244,6 +222,68 @@ export type Database = {
         }
         Relationships: []
       }
+      user_preferences: {
+        Row: {
+          id: string
+          user_id: string
+          email: string
+          preferred_origins: string[]
+          preferred_regions: string[]
+          max_price_chf: number | null
+          cabin_classes: string[]
+          min_trip_days: number
+          max_trip_days: number | null
+          preferred_seasons: string[]
+          flight_types: string[]
+          include_miles_deals: boolean
+          include_budget_deals: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          email: string
+          preferred_origins?: string[]
+          preferred_regions?: string[]
+          max_price_chf?: number | null
+          cabin_classes?: string[]
+          min_trip_days?: number
+          max_trip_days?: number | null
+          preferred_seasons?: string[]
+          flight_types?: string[]
+          include_miles_deals?: boolean
+          include_budget_deals?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          email?: string
+          preferred_origins?: string[]
+          preferred_regions?: string[]
+          max_price_chf?: number | null
+          cabin_classes?: string[]
+          min_trip_days?: number
+          max_trip_days?: number | null
+          preferred_seasons?: string[]
+          flight_types?: string[]
+          include_miles_deals?: boolean
+          include_budget_deals?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -254,15 +294,15 @@ export type Database = {
         Returns: {
           amount_cents: number | null
           created_at: string
-          currency: string | null
+          currency: string
           email: string
-          id: number
-          status: string | null
+          id: string
+          status: string
         }
       }
     }
     Enums: {
-      subscriber_status: "active" | "unsubscribed"
+      subscriber_status: "pending" | "active" | "unsubscribed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -270,127 +310,108 @@ export type Database = {
   }
 }
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
-
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+type DefaultSchema = Database["public"]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    | { schema: keyof DatabaseWithoutInternals },
+    | { schema: keyof Database },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof Database
   }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof Database
 }
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+  ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
   : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
         DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
-      }
-      ? R
-      : never
+  ? (DefaultSchema["Tables"] &
+      DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+      Row: infer R
+    }
+    ? R
     : never
+  : never
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+    | { schema: keyof Database },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof Database
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof Database
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
-      }
-      ? I
-      : never
+  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+      Insert: infer I
+    }
+    ? I
     : never
+  : never
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+    | { schema: keyof Database },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof Database
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof Database
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
-      }
-      ? U
-      : never
+  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+      Update: infer U
+    }
+    ? U
     : never
+  : never
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
+    | { schema: keyof Database },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof Database
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof Database
 }
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
-
-export type CompositeTypes<
-  PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
-> = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never
+  ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+  : never
 
 export const Constants = {
   public: {
     Enums: {
-      subscriber_status: ["active", "unsubscribed"],
+      subscriber_status: ["pending", "active", "unsubscribed"],
     },
   },
 } as const
