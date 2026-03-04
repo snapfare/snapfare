@@ -121,6 +121,45 @@ def guess_alliance(airline_name: str | None) -> Optional[str]:
             "AFR": "skyteam",
             "HV": "skyteam",  # Transavia
             "TRA": "skyteam",
+
+            # Star Alliance (additional codes beyond the name-list below)
+            "TK": "star",   # Turkish Airlines
+            "THY": "star",
+            "SQ": "star",   # Singapore Airlines
+            "SIA": "star",
+            "NH": "star",   # ANA
+            "TG": "star",   # Thai Airways
+            "AC": "star",   # Air Canada
+            "UA": "star",   # United
+            "CA": "star",   # Air China
+            "AI": "star",   # Air India
+            "LO": "star",   # LOT Polish
+
+            # oneworld
+            "BA": "oneworld",  # British Airways
+            "BAW": "oneworld",
+            "IB": "oneworld",   # Iberia
+            "IBE": "oneworld",
+            "QR": "oneworld",   # Qatar Airways
+            "QTR": "oneworld",
+            "CX": "oneworld",   # Cathay Pacific
+            "CPA": "oneworld",
+            "AA": "oneworld",   # American Airlines
+            "AAL": "oneworld",
+            "JL": "oneworld",   # Japan Airlines
+            "JAL": "oneworld",
+            "QF": "oneworld",   # Qantas
+            "QFA": "oneworld",
+            "AS": "oneworld",   # Alaska Airlines
+            "ASA": "oneworld",
+            "AY": "oneworld",   # Finnair
+            "FIN": "oneworld",
+            "EI": "oneworld",   # Aer Lingus
+            "EIN": "oneworld",
+            "RJ": "oneworld",   # Royal Jordanian
+            "RJA": "oneworld",
+            "MH": "oneworld",   # Malaysia Airlines
+            "MAS": "oneworld",
         }
         mapped = code_map.get(code)
         if mapped:
@@ -182,12 +221,46 @@ def guess_alliance(airline_name: str | None) -> Optional[str]:
     return None
 
 
+# Carriers whose own FFP is the best earning program for their own flights,
+# taking priority over the generic alliance program (e.g. TK → Miles&Smiles, not M&M).
+_CARRIER_PRIORITY_PROGRAMS: dict[str, list[str]] = {
+    # Turkish Airlines → Miles&Smiles earns 100% economy on own TK flights
+    # (vs ~25-50% as Star Alliance partner in M&M)
+    "TK": ["Miles&Smiles"],
+    "THY": ["Miles&Smiles"],
+    # Singapore Airlines → KrisFlyer earns 50%+ economy on own SQ flights
+    "SQ": ["KrisFlyer"],
+    "SIA": ["KrisFlyer"],
+    # Etihad Airways → Etihad Guest (not in any alliance; no major alliance earns well on EY)
+    "EY": ["Etihad Guest"],
+    "ETD": ["Etihad Guest"],
+}
+
+
 def guess_priority_programs(airline_name: str | None) -> list[str]:
     """Programs that must win when applicable.
 
-    Business rule: if a flight can be attributed to Miles&More or Flying Blue,
-    it should always be attributed to exactly one of those two.
+    For carriers with strong own FFPs (Turkish, Singapore, Etihad) we prefer
+    their own program over the generic alliance program.
+    For LH group / AF-KLM group, Miles&More / Flying Blue win.
     """
+    raw = (airline_name or "").strip()
+    code = re.sub(r"[^A-Za-z0-9]", "", raw).upper()
+
+    # Check carrier-specific priority FIRST (before alliance check)
+    if code and len(code) in {2, 3}:
+        carrier_prog = _CARRIER_PRIORITY_PROGRAMS.get(code)
+        if carrier_prog:
+            return carrier_prog
+
+    # Also check by name for Turkish / Singapore / Etihad
+    a = _norm_airline_name(raw)
+    if "turkish" in a or "türk" in a:
+        return ["Miles&Smiles"]
+    if "singapore airlines" in a:
+        return ["KrisFlyer"]
+    if "etihad" in a:
+        return ["Etihad Guest"]
 
     alliance = guess_alliance(airline_name)
     if alliance == "star":
@@ -210,47 +283,197 @@ def eligible_programs_for_airline(airline_name: str | None) -> list[str]:
     if alliance == "skyteam":
         return ["Flying Blue", "SkyMiles"]
     if alliance == "oneworld":
-        return ["Avios", "AAdvantage", "Mileage Plan"]
+        # Return airline-specific Avios program name when we can identify the carrier
+        avios_name = _avios_display_name(airline_name)
+        return [avios_name, "AAdvantage", "Mileage Plan"]
+
+    # Check for Emirates Skywards (non-alliance)
+    a = _norm_airline_name(airline_name)
+    code = re.sub(r"[^A-Za-z0-9]", "", (airline_name or "")).upper()
+    if code in {"EK", "UAE"} or "emirates" in a:
+        return ["Emirates Skywards"]
 
     # Unknown airline: we avoid guessing a program.
     return []
 
 
-def estimate_miles_for_program(distance_miles: int, program: str) -> Optional[int]:
-    """Conservative, deterministic estimate for credited miles.
+def _avios_display_name(airline_name: str | None) -> str:
+    """Return the airline-specific Avios program display name."""
+    a = _norm_airline_name(airline_name)
+    code = re.sub(r"[^A-Za-z0-9]", "", (airline_name or "")).upper()
+    if code in {"BA", "BAW"} or "british airways" in a:
+        return "British Airways Avios"
+    if code in {"IB", "IBE"} or "iberia" in a:
+        return "Iberia Avios"
+    if code in {"QR", "QTR"} or "qatar" in a:
+        return "Qatar Avios"
+    if code in {"EI", "EIN"} or "aer lingus" in a:
+        return "Aer Lingus Avios"
+    # Default: British Airways Avios (most widely-used Avios collection for oneworld flights)
+    return "British Airways Avios"
 
-    This is a heuristic; it does not implement real earning charts.
-    It exists to pick a single program consistently.
+
+def _normalize_program_key(program: str) -> str:
+    p = (program or "").strip().lower()
+    p = p.replace("miles & more", "miles&more").replace("flyingblue", "flying blue")
+    # Normalize all Avios variants (British Airways Avios, Qatar Avios, etc.) → "avios"
+    if "avios" in p:
+        return "avios"
+    # Normalize Emirates Skywards
+    if "skywards" in p or "emirates" in p:
+        return "emirates skywards"
+    # Normalize Turkish Miles&Smiles
+    if "miles&smiles" in p or "miles & smiles" in p or "milessmiles" in p:
+        return "miles&smiles"
+    # Normalize Singapore KrisFlyer
+    if "krisflyer" in p or "kris flyer" in p:
+        return "krisflyer"
+    # Normalize Etihad Guest
+    if "etihad guest" in p or ("etihad" in p and "guest" in p):
+        return "etihad guest"
+    return p
+
+
+# Earning rates by (program, cabin_class) as a fraction of flown distance.
+# Based on published earning charts (2024/2025) for cheapest available fare class.
+# "cheapest" = Light/Basic/discounted fares — the fares we surface as deals.
+_EARNING_RATES: dict[str, dict[str, float]] = {
+    # Miles&More (Lufthansa Group: LH, LX, OS, SN, EW).
+    # Own LH/LX flights: Light fare = 25%, Classic = 50%, Flex = 100%.
+    # Deals are typically Light/cheapest fares → 25%.
+    # Business C/D/J = 200%; First A/F = 300%.
+    "miles&more": {
+        "economy": 0.25,
+        "premium economy": 0.75,
+        "business": 2.00,
+        "first": 3.00,
+    },
+    # Flying Blue (Air France / KLM).
+    # Economy Light = 25%; Economy Standard = 75%; Business = 150%; La Première = 200%.
+    "flying blue": {
+        "economy": 0.25,
+        "premium economy": 0.75,
+        "business": 1.50,
+        "first": 2.00,
+    },
+    # Avios (British Airways Executive Club; also Iberia, Qatar, Aer Lingus).
+    # BA Economy Basic (G/K/L/M/N): 25%; Economy Classic: 50%;
+    # Club World Business: 150%; First: 225%.
+    "avios": {
+        "economy": 0.25,
+        "premium economy": 0.50,
+        "business": 1.50,
+        "first": 2.25,
+    },
+    # Turkish Miles&Smiles (own TK flights).
+    # Uniquely generous: ALL economy fare classes earn 100% flown distance.
+    # Business: 175%; (no First on TK).
+    "miles&smiles": {
+        "economy": 1.00,
+        "premium economy": 1.00,
+        "business": 1.75,
+        "first": 2.00,
+    },
+    # Singapore KrisFlyer (own SQ flights).
+    # Cheapest discount fares (W/T/S/Q/N classes): 50%; mid economy: 100%;
+    # Business (C/D/J/Z): 125%; Suites (F/R): 150%.
+    "krisflyer": {
+        "economy": 0.50,
+        "premium economy": 1.00,
+        "business": 1.25,
+        "first": 1.50,
+    },
+    # Etihad Guest (own EY flights).
+    # Cheapest economy (V/W/S/L/E): 25%; standard economy: 50–100%;
+    # Business Studio (C/D/J/Z): 100%; The Residence/First: 150%.
+    "etihad guest": {
+        "economy": 0.25,
+        "premium economy": 0.75,
+        "business": 1.00,
+        "first": 1.50,
+    },
+    # United MileagePlus (Star Alliance partner flights — not own UA metal).
+    # Partner economy = 50%; Business = 100%; First = 125%.
+    "mileageplus": {
+        "economy": 0.50,
+        "premium economy": 0.75,
+        "business": 1.00,
+        "first": 1.25,
+    },
+    # Air Canada Aeroplan (Star Alliance partners).
+    # Partner economy = 25%; Business = 100%.
+    "aeroplan": {
+        "economy": 0.25,
+        "premium economy": 0.50,
+        "business": 1.00,
+        "first": 1.25,
+    },
+    # American AAdvantage (oneworld partner flights).
+    # Partner economy = 50%; Business = 100%; First = 150%.
+    "aadvantage": {
+        "economy": 0.50,
+        "premium economy": 0.75,
+        "business": 1.00,
+        "first": 1.50,
+    },
+    # Alaska Mileage Plan (oneworld partners).
+    # One of the most generous partner programs — BA/IB/QR economy = 100%.
+    "mileage plan": {
+        "economy": 1.00,
+        "premium economy": 1.00,
+        "business": 1.50,
+        "first": 2.00,
+    },
+    # Delta SkyMiles (revenue-based for own DL flights; partner economy = 25%).
+    # Least generous major program for partner earning.
+    "skymiles": {
+        "economy": 0.25,
+        "premium economy": 0.50,
+        "business": 0.75,
+        "first": 1.00,
+    },
+    # Emirates Skywards (own EK flights; not in any alliance).
+    # Economy discount fares: 50%; Business: 100%; First: 150%.
+    "emirates skywards": {
+        "economy": 0.50,
+        "premium economy": 0.75,
+        "business": 1.00,
+        "first": 1.50,
+    },
+}
+
+
+def estimate_miles_for_program(
+    distance_miles: int,
+    program: str,
+    cabin_class: str | None = None,
+) -> Optional[int]:
+    """Deterministic credited-miles estimate using per-program earning rates.
+
+    Rates vary by cabin class: Business/First earn significantly more than Economy.
     """
 
     if not distance_miles or distance_miles <= 0:
         return None
 
     base = max(int(round(distance_miles)), 500)
-    p = (program or "").strip().lower()
+    p = _normalize_program_key(program)
 
-    # Factors are intentionally conservative.
-    factors: dict[str, float] = {
-        "miles&more": 1.0,
-        "flying blue": 0.75,
-        "mileageplus": 1.0,
-        "aeroplan": 1.0,
-        "avios": 0.9,
-        "aadvantage": 1.0,
-        "mileage plan": 1.0,
-        "skymiles": 0.75,
-    }
-
-    # Normalize a few aliases.
-    if "miles & more" in p:
-        p = "miles&more"
-    if "flyingblue" in p:
-        p = "flying blue"
-
-    factor = factors.get(p)
-    if factor is None:
+    rates = _EARNING_RATES.get(p)
+    if rates is None:
         return None
 
+    cabin_key = (cabin_class or "economy").strip().lower()
+    if cabin_key in {"c", "j", "d", "z", "r"}:
+        cabin_key = "business"
+    elif cabin_key in {"f"}:
+        cabin_key = "first"
+    elif cabin_key in {"w", "p"}:
+        cabin_key = "premium economy"
+    elif cabin_key not in rates:
+        cabin_key = "economy"
+
+    factor = rates.get(cabin_key, rates.get("economy", 1.0))
     est = int(round(base * factor / 100.0) * 100)
     return max(est, 500)
 
@@ -271,25 +494,18 @@ def estimate_credited_miles_for_program(
     cabin_class: str | None = None,
     roundtrip: bool | None = None,
 ) -> Optional[int]:
-    """Heuristic credited-miles estimate including trip + cabin multipliers.
+    """Credited-miles estimate including cabin earning rate and round-trip doubling.
 
-    Purpose: produce a user-facing number that is less misleading than
-    a pure one-way distance for business class roundtrips.
+    Cabin earning rates come from per-program lookup tables in estimate_miles_for_program.
+    Round-trip doubles the one-way estimate.
     """
 
-    base = estimate_miles_for_program(distance_miles, program)
+    base = estimate_miles_for_program(distance_miles, program, cabin_class=cabin_class)
     if base is None:
         return None
 
     trip_mult = 2.0 if roundtrip is True else 1.0
-    if _is_first_cabin(cabin_class):
-        cabin_mult = 2.0
-    elif _is_business_cabin(cabin_class):
-        cabin_mult = 1.5
-    else:
-        cabin_mult = 1.0
-
-    est = int(round((base * trip_mult * cabin_mult) / 100.0) * 100)
+    est = int(round((base * trip_mult) / 100.0) * 100)
     return max(est, 500)
 
 
@@ -314,7 +530,8 @@ def choose_best_program_for_deal(
     if not candidates:
         return None, None
 
-    preference = {"Miles&More": 3, "Flying Blue": 2}
+    # Tie-break by stable preference: own-program first, then major alliance programs.
+    preference = {"Miles&More": 5, "Flying Blue": 4, "Miles&Smiles": 3, "KrisFlyer": 3, "Etihad Guest": 3, "Emirates Skywards": 3}
     best_est, best_prog = max(candidates, key=lambda x: (x[0], preference.get(x[1], 0), x[1]))
     return best_prog, best_est
 

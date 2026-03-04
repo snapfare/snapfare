@@ -35,7 +35,7 @@ def save_deals(table: str, deals: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not _client:
         return {"status": "disabled", "reason": "Supabase not configured"}
 
-    # Para tablas con unique constraint en booking_url usamos upsert para evitar errores 23505.
+    # For tables with unique constraint on booking_url we use upsert to avoid 23505 errors.
     is_upsert = table in {"deals_traveldealz", "deals_secretflying", "deals"}
 
     cleaned: List[Dict[str, Any]] = [d for d in deals if isinstance(d, dict)]
@@ -107,7 +107,7 @@ def get_deals(table: str, limit: int = 10) -> Dict[str, Any]:
     if not _client:
         return {"status": "disabled", "reason": "Supabase not configured"}
     try:
-        # Primero intentamos ordenar por created_at si existe en la tabla
+        # First try to order by created_at if it exists in the table
         try:
             rsp = (
                 _client
@@ -118,7 +118,7 @@ def get_deals(table: str, limit: int = 10) -> Dict[str, Any]:
                 .execute()
             )
         except Exception:
-            # Si la columna no existe o falla el order, hacemos una consulta simple
+            # If the column doesn't exist or ordering fails, do a simple query
             rsp = _client.table(table).select("*").limit(limit).execute()
 
         return {"status": "ok", "count": len(rsp.data), "deals": rsp.data}

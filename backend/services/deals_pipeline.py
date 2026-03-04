@@ -1,5 +1,4 @@
 import os
-import json
 import re
 import csv
 import logging
@@ -20,7 +19,6 @@ from services.baggage_format import format_baggage_short_de
 from scoring.miles_utils import (
     great_circle_miles,
     approximate_program_miles,
-    filter_miles_programs_display,
     choose_best_program_for_deal,
 )
 
@@ -125,23 +123,18 @@ try:  # pragma: no cover - optional dependency
 except Exception:  # pragma: no cover - defensive
     _AIRPORTS_IATA_DATA = {}
 
-try:
-    from services.deals_enrichment import enrich_deals_batch
-except Exception:
-    # Fallback: if enrichment service is not available, behave as no-op
-    def enrich_deals_batch(deals: List[Dict[str, Any]], max_items: int | None = None) -> List[Dict[str, Any]]:  # type: ignore[override]
-        return list(deals)
+# LLM enrichment removed — all fields are now deterministic.
 
 
 def _parse_scraping_sources() -> set[str]:
     """Decide which scrapers are enabled based on per-source limits.
 
-    - travel-dealz se considera activo si SCRAPING_LIMIT_TRAVEL_DEALZ > 0.
-    - secretflying se considera activo si SCRAPING_LIMIT_SECRETFLYING > 0.
+    - travel-dealz is considered active if SCRAPING_LIMIT_TRAVEL_DEALZ > 0.
+    - secretflying is considered active if SCRAPING_LIMIT_SECRETFLYING > 0.
 
-    Si ninguna de las dos variables está definida, se mantiene el
-    comportamiento legacy: se intenta leer SCRAPING_URL y, en último
-    término, se activan ambas fuentes.
+    If neither variable is defined, the legacy behaviour is preserved:
+    we try to read SCRAPING_URL and, as a last resort, both sources
+    are enabled.
     """
 
     td_env = os.getenv("SCRAPING_LIMIT_TRAVEL_DEALZ")
@@ -169,8 +162,8 @@ def _parse_scraping_sources() -> set[str]:
     if parsed_any_limit:
         return enabled
 
-    # Legacy fallback: seguir respetando SCRAPING_URL si no hay
-    # límites por fuente configurados.
+    # Legacy fallback: keep respecting SCRAPING_URL if no
+    # per-source limits are configured.
     raw = os.getenv("SCRAPING_URL", "").strip()
     if not raw:
         return {"travel-dealz", "secretflying"}
@@ -205,7 +198,7 @@ def _load_done_article_urls(limit: int | None = None) -> Dict[str, set[str]]:
             .execute()
         )
     except Exception:
-        # Si falla esta consulta, simplemente no filtramos por done.
+        # If this query fails, we simply don't filter by done.
         return done_by_source
 
     rows = getattr(rsp, "data", []) or []
@@ -250,7 +243,13 @@ def _upsert_source_articles_done(scored_deals: List[Dict[str, Any]]) -> None:
             continue
 
         seen_urls.add(link)
-        rows.append({"article_url": link, "source": source, "status": "done"})
+        from datetime import datetime, timezone  # noqa: PLC0415
+        rows.append({
+            "article_url": link,
+            "source": source,
+            "status": "done",
+            "last_scraped_at": datetime.now(timezone.utc).isoformat(),
+        })
 
     if not rows:
         return
@@ -259,7 +258,7 @@ def _upsert_source_articles_done(scored_deals: List[Dict[str, Any]]) -> None:
         logger.info("[deals_pipeline] source_articles upsert rows=%s", len(rows))
         _client.table("source_articles").upsert(rows, on_conflict="article_url").execute()
     except Exception:
-        # Error no crítico: no interrumpimos el pipeline de deals.
+        # Non-critical error: don't interrupt the deals pipeline.
         logger.warning("[deals_pipeline] source_articles upsert failed", exc_info=True)
         return
 
@@ -332,12 +331,12 @@ def _is_travel_dealz_flight_article(article: Dict[str, Any], url: str) -> bool:
 
 _CURRENCY_TO_EUR: Dict[str, float] = {
     "EUR": 1.0,
-    "USD": 0.9,   # aproximado
-    "CHF": 1.02,  # aproximado
-    "GBP": 1.15,  # aproximado
+    "USD": 0.9,   # approximate
+    "CHF": 1.02,  # approximate
+    "GBP": 1.15,  # approximate
 }
 
-# Cache liviano de nombres de aeropuerto (alemán) indexado por IATA
+# Lightweight cache of airport names (German) indexed by IATA
 _AIRPORT_NAMES_BY_IATA: Dict[str, str] | None = None
 _AIRLINES_BY_CODE: Dict[str, str] | None = None
 _AIRCRAFT_BY_IATA: Dict[str, str] | None = None
@@ -608,7 +607,7 @@ def _resolve_city_name(city_val: Any, iata_val: Any) -> Optional[str]:
         if iata_str in _AIRPORTS_IATA_DATA or _lookup_airport_name(iata_str):
             _update_airport_name(iata_str, city_str)
 
-    # Si ya tenemos nombre (scraping), no lo sobreescribimos con el CSV
+    # If we already have a name (from scraping), don't overwrite it with the CSV
     if city_str:
         return city_str
 
@@ -624,7 +623,7 @@ def _resolve_city_name(city_val: Any, iata_val: Any) -> Optional[str]:
             # Best-effort: try to write it for future runs, but don't rely on it.
             _update_airport_name(iata_str, guessed)
             return guessed
-        # Sin mapeo, devolvemos el propio código IATA para no dejarlo vacío
+        # No mapping found; return the IATA code itself to avoid leaving it empty
         return iata_str
 
     return city_str or iata_str
@@ -910,10 +909,55 @@ def _infer_baggage_from_text(text: Any) -> Tuple[Optional[bool], Optional[int], 
     return included, pieces_val, kg_val, text.strip()
 
 
+_CABIN_CLASS_CANONICAL: Dict[str, str] = {
+    # Single-letter booking class codes → canonical display names
+    "y": "Economy", "m": "Economy", "h": "Economy", "k": "Economy",
+    "l": "Economy", "q": "Economy", "t": "Economy", "v": "Economy",
+    "x": "Economy", "b": "Economy", "e": "Economy", "n": "Economy",
+    "o": "Economy", "s": "Economy", "economy": "Economy",
+    "w": "Premium Economy", "p": "Premium Economy",
+    "premium economy": "Premium Economy", "premium_economy": "Premium Economy",
+    "c": "Business", "j": "Business", "d": "Business", "z": "Business",
+    "r": "Business", "business": "Business",
+    "f": "First", "first": "First",
+}
+
+
+def _normalize_cabin_class(val: Any) -> Optional[str]:
+    """Map single-letter booking codes and lowercase strings to canonical cabin names."""
+    if val is None:
+        return None
+    s = str(val).strip()
+    return _CABIN_CLASS_CANONICAL.get(s.lower(), s) if s else None
+
+
+def _normalize_miles_display(miles_text: Any) -> Optional[str]:
+    """Ensure miles display is always in 'Program · Amount' order.
+
+    TravelDealz sometimes returns 'Amount · Program' (e.g. "6'784 · Flying Blue").
+    This function reverses such strings to 'Program · Amount'.
+    """
+    if miles_text is None:
+        return None
+    s = str(miles_text).strip()
+    if not s or s == "—":
+        return s or None
+    if " · " not in s:
+        return s
+    parts = s.split(" · ", 1)
+    left, right = parts[0].strip(), parts[1].strip()
+    # If the left part looks like a number (all digits, apostrophes, commas), reverse
+    import re as _re
+    if _re.match(r"^[\d\s',.']+$", left):
+        return f"{right} · {left}"
+    return s
+
+
 def _coerce_numeric_fields(row: Dict[str, Any]) -> Dict[str, Any]:
     """Ensure numeric fields are stored as ints/floats, not strings.
 
     This prevents DB errors like "invalid input syntax for type integer".
+    Also normalizes cabin_class to canonical display names.
     """
 
     coerced = dict(row)
@@ -945,39 +989,11 @@ def _coerce_numeric_fields(row: Dict[str, Any]) -> Dict[str, Any]:
             except Exception:
                 coerced["price"] = None
 
+    # Normalize cabin_class codes to display names (e.g. "Y" → "Economy")
+    if "cabin_class" in coerced:
+        coerced["cabin_class"] = _normalize_cabin_class(coerced.get("cabin_class"))
+
     return coerced
-
-
-def _extract_llm_meta(deal: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize LLM enrichment metadata for persistence.
-
-    IMPORTANT: We only emit LLM columns if the deal already contains any
-    LLM metadata. This prevents non-LLM runs from overwriting previously
-    enriched rows in Supabase with NULL/False via upsert.
-    """
-
-    has_any_llm_meta = any(
-        k in deal
-        for k in (
-            "llm_enriched",
-            "llm_enriched_fields",
-            "llm_enrichment_version",
-        )
-    )
-    if not has_any_llm_meta:
-        return {}
-
-    enriched = bool(deal.get("llm_enriched"))
-    fields = deal.get("llm_enriched_fields")
-    version = deal.get("llm_enrichment_version")
-
-    return {
-        "llm_enriched": enriched,
-        "llm_enriched_fields": fields if fields is not None else ({} if enriched else None),
-        "llm_enrichment_version": version
-        if version
-        else (os.getenv("DEALS_LLM_ENRICHMENT_VERSION") if enriched else None),
-    }
 
 
 def _normalize_deal_fields(deal: Dict[str, Any]) -> Dict[str, Any]:
@@ -985,7 +1001,7 @@ def _normalize_deal_fields(deal: Dict[str, Any]) -> Dict[str, Any]:
 
     normalized = dict(deal)
 
-    # Si vienen itinerarios, estimar duración por itinerario sin copiar al nivel del deal
+    # If itineraries are present, estimate duration per itinerary without copying to deal level
     if isinstance(normalized.get("itineraries"), list):
         for it in normalized["itineraries"]:
             if not isinstance(it, dict):
@@ -1025,7 +1041,8 @@ def _normalize_deal_fields(deal: Dict[str, Any]) -> Dict[str, Any]:
     if readable_ac:
         normalized["aircraft"] = readable_ac
 
-    # Baggage inference from any available text snippets
+    # Baggage inference from any available text snippets.
+    # cabin_baggage is an in-memory field from the article parser (not a Supabase column).
     bag_text_sources = [
         normalized.get("baggage_allowance_display"),
         normalized.get("baggage_summary"),
@@ -1038,11 +1055,11 @@ def _normalize_deal_fields(deal: Dict[str, Any]) -> Dict[str, Any]:
         if normalized.get("baggage_pieces_included") is None and pieces is not None:
             normalized["baggage_pieces_included"] = pieces
         if normalized.get("baggage_allowance_kg") is None and kg_val is not None:
-            normalized["baggage_allowance_kg"] = kg_val
+            normalized["baggage_allowance_kg"] = int(kg_val) if kg_val == int(kg_val) else kg_val
         if normalized.get("baggage_allowance_display") is None and display:
             normalized["baggage_allowance_display"] = display
 
-    # Duración: si no hay minutos/display pero tenemos IATAs, estimar a 500 mph
+    # Duration: if no minutes/display but we have IATAs, estimate at 500 mph
     if not normalized.get("flight_duration_minutes") and normalized.get("origin_iata") and normalized.get("destination_iata"):
         try:
             gc = great_circle_miles(normalized.get("origin_iata"), normalized.get("destination_iata"))
@@ -1063,7 +1080,97 @@ def _normalize_deal_fields(deal: Dict[str, Any]) -> Dict[str, Any]:
     if destination_filled:
         normalized["destination"] = destination_filled
 
+    # Fetch Unsplash image for destination (always overrides source-provided images).
+    dest_city_for_img = normalized.get("destination") or normalized.get("destination_iata")
+    if dest_city_for_img:
+        try:
+            from services.unsplash_service import fetch_destination_image  # type: ignore
+            img_url = fetch_destination_image(str(dest_city_for_img))
+            if img_url:
+                normalized["image"] = img_url
+        except Exception:
+            pass
+
+    # Build a German-language travel period display string.
+    if not normalized.get("travel_period_display"):
+        normalized["travel_period_display"] = _build_travel_period_display(normalized)
+
+    # Add Skyscanner affiliate link when route is known (always refresh so adultsv2=2 is used).
+    try:
+        from services.skyscanner_links import build_skyscanner_link  # type: ignore
+        url = build_skyscanner_link(
+            origin_iata=normalized.get("origin_iata") or "",
+            dest_iata=normalized.get("destination_iata") or "",
+            depart_date=normalized.get("departure_date") or normalized.get("date_out"),
+            return_date=normalized.get("return_date") or normalized.get("date_in"),
+            cabin_class=normalized.get("cabin_class"),
+        )
+        if url:
+            normalized["skyscanner_url"] = url
+    except Exception:
+        pass
+
+    # Compute stops from itineraries (segments - 1 per outbound slice).
+    # Only set stops if itineraries contain actual segment data; otherwise leave as NULL
+    # to avoid incorrectly showing 0 stops for flights where we don't know the routing.
+    if normalized.get("stops") is None:
+        itins = normalized.get("itineraries")
+        if isinstance(itins, list) and itins:
+            max_segs = max(
+                (len(it.get("segments", [])) for it in itins if isinstance(it, dict)),
+                default=0,
+            )
+            if max_segs > 0:
+                normalized["stops"] = max(0, max_segs - 1)
+
     return normalized
+
+
+_DE_MONTHS = [
+    "Januar", "Februar", "März", "April", "Mai", "Juni",
+    "Juli", "August", "September", "Oktober", "November", "Dezember",
+]
+
+
+def _build_travel_period_display(deal: Dict[str, Any]) -> Optional[str]:
+    """Build a German travel period string like '15. Jan – 22. Jan 2026'
+    or 'Januar bis März 2026' from available date/period fields."""
+
+    dep = deal.get("departure_date") or deal.get("date_out")
+    ret = deal.get("return_date") or deal.get("date_in")
+
+    if dep and ret:
+        try:
+            d1 = datetime.fromisoformat(str(dep))
+            d2 = datetime.fromisoformat(str(ret))
+            m1 = _DE_MONTHS[d1.month - 1][:3]
+            m2 = _DE_MONTHS[d2.month - 1][:3]
+            if d1.year == d2.year:
+                return f"{d1.day}. {m1} – {d2.day}. {m2} {d1.year}"
+            return f"{d1.day}. {m1} {d1.year} – {d2.day}. {m2} {d2.year}"
+        except Exception:
+            pass
+
+    # Try to use cheap_months as a range (e.g. [1, 2, 3])
+    cheap_months = deal.get("cheap_months")
+    if isinstance(cheap_months, list) and cheap_months:
+        try:
+            months = sorted({int(m) for m in cheap_months if 1 <= int(m) <= 12})
+            if len(months) == 1:
+                return _DE_MONTHS[months[0] - 1]
+            year = datetime.now().year
+            if dep:
+                try:
+                    year = datetime.fromisoformat(str(dep)).year
+                except Exception:
+                    pass
+            return f"{_DE_MONTHS[months[0] - 1]} bis {_DE_MONTHS[months[-1] - 1]} {year}"
+        except Exception:
+            pass
+
+    # Fall back to date_range string if present
+    date_range = str(deal.get("date_range") or "").strip()
+    return date_range or None
 
 
 def _first_matching_param(qs: Dict[str, List[str]], *candidates: str) -> Optional[str]:
@@ -1087,9 +1194,9 @@ def _find_param_by_substring(qs: Dict[str, List[str]], substrings: List[str]) ->
 def _extract_secretflying_from_booking_url(booking_url: str) -> Dict[str, Any]:
     """Best-effort extraction of flight data from a SecretFlying booking_url.
 
-    Pensado principalmente para enlaces tipo Skyscanner, donde la URL suele
-    incluir parámetros como origin/destination/outboundDate/inboundDate, pero
-    también intenta aprovechar patrones en el path (segmentos IATA, fechas).
+    Designed primarily for Skyscanner-type links, where the URL usually
+    includes parameters like origin/destination/outboundDate/inboundDate, but
+    also tries to leverage patterns in the path (IATA segments, dates).
     """
 
     try:
@@ -1107,7 +1214,7 @@ def _extract_secretflying_from_booking_url(booking_url: str) -> Dict[str, Any]:
             or ""
         ).strip().upper()
 
-        # Normalizar posibles códigos internos de agregadores (p.ej. SINS -> SIN en Skyscanner)
+        # Normalize possible internal aggregator codes (e.g. SINS -> SIN in Skyscanner)
         if dest_code == "SINS":
             dest_code = "SIN"
 
@@ -1127,7 +1234,7 @@ def _extract_secretflying_from_booking_url(booking_url: str) -> Dict[str, Any]:
         rtn = _first_matching_param(qs, "rtn", "roundtrip") or ""
         rtn = rtn.strip()
 
-        # Si no hay códigos claros en la query, intentamos deducirlos del path
+        # If there are no clear codes in the query, try to deduce them from the path
         if not origin_code or not dest_code:
             segments = [seg for seg in parsed.path.split("/") if seg]
             iata_candidates = [seg.upper() for seg in segments if len(seg) == 3 and seg.isalpha()]
@@ -1177,37 +1284,44 @@ def _normalize_price(price: float | None, currency: str | None) -> float | None:
         return None
 
 
+_SWISS_AIRPORTS = {"ZRH", "GVA", "BSL", "BRN", "LUG", "SIR"}
+
+
 def _get_origin_iata_filter() -> set[str]:
     """Return a set of origin IATA codes to keep, from env ORIGIN_IATA_FILTER.
 
     Example: ORIGIN_IATA_FILTER="ZRH,BSL" -> {"ZRH", "BSL"}.
-    If not set, no origin-based filtering is applied.
+    Defaults to Swiss airports (ZRH, GVA, BSL, BRN, LUG, SIR) when not set.
+    Set ORIGIN_IATA_FILTER="" explicitly to disable filtering.
     """
 
-    raw = os.getenv("ORIGIN_IATA_FILTER", "").strip()
+    raw = os.getenv("ORIGIN_IATA_FILTER")
+    if raw is None:
+        return _SWISS_AIRPORTS
+    raw = raw.strip()
     if not raw:
         return set()
     return {part.strip().upper() for part in raw.split(",") if part.strip()}
 
 
-def _load_amadeus_benchmarks(limit: int | None = None) -> Dict[Tuple[str, str, int], float]:
-    """Load Amadeus benchmarks from the unified deals table.
+def _load_duffel_benchmarks(limit: int | None = None) -> Dict[Tuple[str, str, int], float]:
+    """Load Duffel benchmarks from the unified deals table.
 
     Returns a mapping ``(origin_iata, destination_iata, month) -> best_price_eur``.
-    It looks for rows in `deals` with `source='amadeus'`.
+    Queries rows with ``source='duffel'`` (or legacy ``source='amadeus'``).
     """
 
     if not _client:
         return {}
 
-    max_rows = limit or int(os.getenv("DEALS_AMADEUS_BENCHMARK_LIMIT", "5000"))
+    max_rows = limit or int(os.getenv("DEALS_DUFFEL_BENCHMARK_LIMIT", "5000"))
     origin_filter = _get_origin_iata_filter()
 
     try:
         rsp = (
             _client.table("deals")
             .select("origin_iata,destination_iata,date_out,price,currency,source")
-            .eq("source", "amadeus")
+            .in_("source", ["duffel", "amadeus"])
             .limit(max_rows)
             .execute()
         )
@@ -1224,9 +1338,9 @@ def _load_amadeus_benchmarks(limit: int | None = None) -> Dict[Tuple[str, str, i
         if not origin or not dest or not date_out:
             continue
 
-        # Solo nos interesan benchmarks para orígenes dentro del filtro
-        # (por ejemplo, aeropuertos suizos como ZRH/BSL) cuando dicho filtro
-        # está configurado.
+        # We only care about benchmarks for origins within the filter
+        # (e.g. Swiss airports like ZRH/BSL) when said filter
+        # is configured.
         if origin_filter and origin not in origin_filter:
             continue
 
@@ -1257,14 +1371,21 @@ def _load_amadeus_benchmarks(limit: int | None = None) -> Dict[Tuple[str, str, i
 
 
 def _score_raw(price_eur: float | None) -> float:
-    """Simple raw score: cheaper deals get higher score.
-
-    If we don't know the price, give them a low but non-zero base score.
-    """
+    """Simple raw score: cheaper deals get higher score."""
     if price_eur is None or price_eur <= 0:
         return 5.0
-    # Inverse price scaled (e.g. 1000 EUR -> 1.0, 250 EUR -> 4.0, ...)
     return 1000.0 / price_eur
+
+
+def _assign_tier(deal: Dict[str, Any]) -> str:
+    """Return 'premium' for Business/First/Premium Economy, else 'free'."""
+    cabin = str(deal.get("cabin_class") or "").strip().upper()
+    title = str(deal.get("title") or "").lower()
+    if cabin in {"BUSINESS", "J", "C", "D", "Z", "FIRST", "F", "PREMIUM ECONOMY", "PREMIUM_ECONOMY", "W", "P"}:
+        return "premium"
+    if "business" in title or "premium economy" in title or "first class" in title:
+        return "premium"
+    return "free"
 
 
 def _extract_route_month(deal: Dict[str, Any]) -> Optional[Tuple[str, str, int]]:
@@ -1301,62 +1422,103 @@ def _extract_route_month(deal: Dict[str, Any]) -> Optional[Tuple[str, str, int]]
     return origin, dest, month
 
 
+def _clamp01(v: float) -> float:
+    return max(0.0, min(1.0, v))
+
+
+def _score_single_deal(
+    d: Dict[str, Any],
+    benchmarks: Optional[Dict[Tuple[str, str, int], float]],
+) -> float:
+    """Compute a weighted raw score for a single deal (higher = better deal).
+
+    Weights:
+      40% price competitiveness vs benchmark
+      40% duration efficiency vs great-circle estimate
+      20% number of stops (0 stops = best)
+    """
+
+    # ── 1. Price competitiveness (35%) ───────────────────────────────────────
+    price_eur = _normalize_price(d.get("price"), d.get("currency"))
+    if price_eur and price_eur > 0 and benchmarks:
+        route = _extract_route_month(d)
+        bench = benchmarks.get(route) if route else None
+        if bench and bench > 0:
+            ratio = price_eur / bench
+            # ratio 0.5 or better → full marks; ratio 2.0+ → zero marks
+            price_score = _clamp01(1.0 - (ratio - 0.5) / 1.5)
+        else:
+            # No benchmark: use inverse-price heuristic scaled to ~500 EUR being "average"
+            price_score = _clamp01(500.0 / (price_eur + 1))
+    elif price_eur and price_eur > 0:
+        price_score = _clamp01(500.0 / (price_eur + 1))
+    else:
+        price_score = 0.3  # unknown price: moderate score
+
+    # ── 2. Duration efficiency (25%) ─────────────────────────────────────────
+    actual_mins = d.get("flight_duration_minutes")
+    origin_iata = d.get("origin_iata")
+    dest_iata = d.get("destination_iata")
+    if actual_mins and actual_mins > 0 and origin_iata and dest_iata:
+        try:
+            gc_miles = great_circle_miles(origin_iata, dest_iata)
+            # Assume ~500 mph cruising → expected mins
+            expected_mins = int((gc_miles / 500.0) * 60) if gc_miles else actual_mins
+            # Efficiency: expected / actual (1.0 = perfect, <1 = slower than direct)
+            duration_score = _clamp01(expected_mins / max(actual_mins, 1))
+        except Exception:
+            duration_score = 0.5
+    else:
+        duration_score = 0.5  # unknown duration: neutral
+
+    # ── 3. Stops (15%) ───────────────────────────────────────────────────────
+    stops = d.get("stops")
+    if stops is None:
+        stops_str = str(d.get("flight_stops") or d.get("itinerary_stops") or "").strip()
+        try:
+            stops = int(stops_str) if stops_str.isdigit() else None
+        except Exception:
+            stops = None
+    if stops is None:
+        # Infer from duration: >8h with no data → likely 1 stop
+        stops = 1 if (actual_mins and actual_mins > 480) else 0
+    stops_score = _clamp01(1.0 - stops / 2.0)  # 0 stops=1.0, 1=0.5, 2+=0.0
+
+    # ── Error-fare bonus ──────────────────────────────────────────────────────
+    title = (d.get("title") or "").lower()
+    error_bonus = 0.15 if ("error fare" in title or "mistake fare" in title) else 0.0
+
+    # Weights: 40% price, 40% duration, 20% stops
+    return (
+        0.40 * price_score
+        + 0.40 * duration_score
+        + 0.20 * stops_score
+        + error_bonus
+    )
+
+
 def score_deals(
     deals: List[Dict[str, Any]],
     benchmarks: Optional[Dict[Tuple[str, str, int], float]] = None,
 ) -> List[Dict[str, Any]]:
-    """Add a `score` field to each deal and normalize scores to [0, 100]."""
+    """Add a `score` field (0–100) to each deal and sort highest first.
+
+    Formula (weights): price 40%, duration 40%, stops 20%.
+    """
     if not deals:
         return []
 
-    scored: List[Tuple[Dict[str, Any], float]] = []
-    for d in deals:
-        price_eur = _normalize_price(d.get("price"), d.get("currency"))
-        raw_score = _score_raw(price_eur)
-
-        # Ajuste según benchmark Amadeus: si sabemos que, para esta ruta/mes,
-        # el mejor precio de Amadeus es X, podemos saber si este deal es
-        # barato (ratio < 1) o caro (ratio > 1) frente a esa referencia.
-        if benchmarks:
-            route = _extract_route_month(d)
-            if route is not None:
-                bench_price = benchmarks.get(route)
-                if bench_price and bench_price > 0 and price_eur and price_eur > 0:
-                    ratio = price_eur / bench_price
-
-                    # ratio ~= 1  -> neutro
-                    # ratio < 1   -> barato vs Amadeus (bonus)
-                    # ratio > 1   -> caro vs Amadeus (penalización)
-                    if ratio <= 0.8:
-                        factor = 1.3
-                    elif ratio <= 1.0:
-                        factor = 1.1
-                    elif ratio <= 1.3:
-                        factor = 0.8
-                    else:
-                        factor = 0.5
-
-                    raw_score *= factor
-
-        # Small bonus if we detect clear "error fare" style wording
-        title = (d.get("title") or "").lower()
-        if "error fare" in title or "mistake fare" in title:
-            raw_score *= 1.2
-
-        scored.append((d, raw_score))
-
-    raw_values = [s for _, s in scored]
-    min_s, max_s = min(raw_values), max(raw_values)
+    raw_scores = [_score_single_deal(d, benchmarks) for d in deals]
+    min_s = min(raw_scores)
+    max_s = max(raw_scores)
     span = max_s - min_s if max_s > min_s else 1.0
 
     normalized: List[Dict[str, Any]] = []
-    for d, s in scored:
-        norm = (s - min_s) / span * 100.0
+    for d, s in zip(deals, raw_scores):
         deal_copy = dict(d)
-        deal_copy["score"] = round(norm, 2)
+        deal_copy["score"] = round((s - min_s) / span * 100.0, 2)
         normalized.append(deal_copy)
 
-    # Highest score first
     normalized.sort(key=lambda x: x.get("score", 0.0), reverse=True)
     return normalized
 
@@ -1441,47 +1603,8 @@ def render_html_snippet(deals: List[Dict[str, Any]], max_items: int | None = Non
 
         baggage_short = format_baggage_short_de(d)
 
-        llm_raw = d.get("llm_enriched_fields")
-        llm_fields: Dict[str, Any] = {}
-        if isinstance(llm_raw, dict):
-            llm_fields = llm_raw
-        elif isinstance(llm_raw, str):
-            s = llm_raw.strip()
-            if s.startswith("{") and s.endswith("}"):
-                try:
-                    parsed = json.loads(s)
-                    if isinstance(parsed, dict):
-                        llm_fields = parsed
-                except Exception:
-                    llm_fields = {}
-        miles_programs_display = None
-        miles_programs_display = llm_fields.get("miles_programs_display") if isinstance(llm_fields, dict) else None
-        if miles_programs_display not in (None, ""):
-            airline_name = d.get("airline") or llm_fields.get("airline_name")
-            original_mpd = str(miles_programs_display)
-            miles_programs_display = filter_miles_programs_display(
-                str(miles_programs_display),
-                str(airline_name) if airline_name not in (None, "") else None,
-            )
-            # If we couldn't map any eligible program for this airline and the
-            # string still looks like a multi-program display, avoid showing it.
-            if (
-                isinstance(miles_programs_display, str)
-                and isinstance(original_mpd, str)
-                and any(sep in original_mpd for sep in ("/", "|", "\n", ";"))
-                and miles_programs_display.strip() == original_mpd.strip()
-            ):
-                miles_programs_display = None
-
         miles_val = d.get("miles") or d.get("miles_estimate")
-        miles_display = None
-        if miles_programs_display:
-            miles_display = str(miles_programs_display).strip() or None
-        elif miles_val is not None:
-            try:
-                miles_display = f"{int(float(miles_val))} mi"
-            except Exception:
-                miles_display = str(miles_val)
+        miles_display = str(miles_val) if miles_val is not None else None
 
         # Escape user/LLM-provided strings for safe HTML rendering.
         title_e = escape(str(title))
@@ -1538,7 +1661,6 @@ def run_deals_pipeline(
     limit: int = 50,
     persist: bool = True,
     max_items_html: int | None = None,
-    enrich: bool | None = None,
     sources: set[str] | None = None,
 ) -> Dict[str, Any]:
     """End-to-end pipeline: scrape, optional persist, score and HTML.
@@ -1546,15 +1668,15 @@ def run_deals_pipeline(
     Returns a structured dict that can be consumed by API endpoints or
     automation scripts.
 
-    If ``sources`` se proporciona, debe ser un subconjunto de
-    {"travel-dealz", "secretflying"} y tiene prioridad sobre la
-    configuración de entorno SCRAPING_URL. Si es None, se respeta el
-    comportamiento actual basado en SCRAPING_URL.
+    If ``sources`` is provided, it must be a subset of
+    {"travel-dealz", "secretflying"} and takes priority over the
+    SCRAPING_URL environment configuration. If None, the current
+    behaviour based on SCRAPING_URL is respected.
     """
     sources_enabled = sources or _parse_scraping_sources()
 
-    # Permitir límites de scraping por fuente configurables vía entorno
-    # (p.ej. desde run_config: scraping_limit_travel_dealz, scraping_limit_secretflying).
+    # Allow per-source scraping limits configurable via environment
+    # (e.g. from run_config: scraping_limit_travel_dealz, scraping_limit_secretflying).
     try:
         td_limit_env = os.getenv("SCRAPING_LIMIT_TRAVEL_DEALZ")
         td_limit_total = int(td_limit_env) if td_limit_env else limit
@@ -1585,11 +1707,11 @@ def run_deals_pipeline(
         except Exception:
             sf_limit = int(limit)
 
-    # Cargar URLs ya marcadas como 'done' en source_articles para evitar
-    # reprocesar artículos que ya se han scrapeado y persistido.
-    # Solo aplicamos este filtro cuando vamos a persistir en Supabase;
-    # para ejecuciones con persist=False interesa ver también artículos
-    # ya procesados anteriormente.
+    # Load URLs already marked as 'done' in source_articles to avoid
+    # reprocessing articles that have already been scraped and persisted.
+    # We only apply this filter when persisting to Supabase;
+    # for runs with persist=False we want to see previously
+    # processed articles as well.
     if persist:
         done_by_source = _load_done_article_urls()
     else:
@@ -1607,12 +1729,12 @@ def run_deals_pipeline(
             persist,
         )
 
-        # Sobre-scrapeamos solo cuando ya hay artículos done y es probable
-        # que los descartemos. Si no hay done, no añadimos buffer.
+        # We over-scrape only when there are already done articles and it's likely
+        # we'll discard them. If there are no done articles, we don't add a buffer.
         #
-        # Importante: SCRAPING_LIMIT_TRAVEL_DEALZ representa cuántos deals
-        # queremos PRODUCIR (desired_td_new), no cuántos links queremos leer.
-        # Por eso podemos pedir más candidatos (overfetch) y luego recortar.
+        # Important: SCRAPING_LIMIT_TRAVEL_DEALZ represents how many deals
+        # we want to PRODUCE (desired_td_new), not how many links we want to read.
+        # That's why we can request more candidates (overfetch) and then trim.
         if persist and done_td:
             try:
                 min_fetch_floor = int(os.getenv("SCRAPING_OVERFETCH_TRAVEL_DEALZ_MIN", "10"))
@@ -1624,10 +1746,10 @@ def run_deals_pipeline(
             except Exception:
                 max_fetch_cap = 50
 
-            # Nunca capear por debajo del objetivo: si queremos 500 deals
-            # nuevos, un cap de 50 haría imposible cumplir el contrato.
-            # El cap se interpreta como "máximo de candidatos", no como
-            # "máximo de deals producidos".
+            # Never cap below the target: if we want 500 new deals,
+            # a cap of 50 would make it impossible to fulfil the contract.
+            # The cap is interpreted as "maximum candidates", not as
+            # "maximum produced deals".
             try:
                 max_fetch_cap = max(int(max_fetch_cap), int(desired_td_new))
             except Exception:
@@ -1636,9 +1758,9 @@ def run_deals_pipeline(
             overlap_hint = min(len(done_td), desired_td_new)
             buffer_td = max(desired_td_new // 2, overlap_hint)
 
-            # Si el desired es muy pequeño (p.ej. 2), un overfetch de x2 suele
-            # quedarse corto y se ve el efecto de "requested_total=4".
-            # En ese caso aplicamos un suelo mínimo (min_fetch_floor).
+            # If desired is very small (e.g. 2), an overfetch of x2 often
+            # falls short and shows the "requested_total=4" effect.
+            # In that case we apply a minimum floor (min_fetch_floor).
             fetch_td_total = max(desired_td_new + buffer_td, desired_td_new * 2, min_fetch_floor)
             fetch_td_total = min(fetch_td_total, max_fetch_cap)
         else:
@@ -1711,8 +1833,8 @@ def run_deals_pipeline(
                 continue
             td_candidates.append(d)
 
-        # Mantener el contrato: producir como máximo desired_td_new deals
-        # (aunque hayamos leído más candidatos para saltarnos los done).
+        # Maintain the contract: produce at most desired_td_new deals
+        # (even though we read more candidates to skip the done ones).
         if desired_td_new > 0 and len(td_candidates) > desired_td_new:
             td_candidates = td_candidates[:desired_td_new]
 
@@ -1791,10 +1913,10 @@ def run_deals_pipeline(
         )
         raw_deals = raw_deals[:limit]
 
-    # Enriquecimiento "barato" específico para Travel-Dealz: itinerarios y metadatos por artículo
-    # Esto NO usa OpenAI; se basa solo en scraping del artículo.
-    # Además: filtramos promociones sin itinerario (p.ej. gift cards) para no
-    # persistirlas como deals.
+    # Cheap enrichment specific to Travel-Dealz: itineraries and metadata per article.
+    # This does NOT use OpenAI; it relies only on article scraping.
+    # Additionally: we filter out promotions without itineraries (e.g. gift cards) to avoid
+    # persisting them as deals.
     filtered_raw_deals: List[Dict[str, Any]] = []
     for d in raw_deals:
         link = (d.get("link") or "").lower()
@@ -1820,13 +1942,17 @@ def run_deals_pipeline(
         if isinstance(itins, list) and itins:
             d["itineraries"] = itins
 
-            # Si el deal base no tiene IATAs, heredamos los del primer itinerario
+            # If the base deal has no IATAs/dates, inherit them from the first itinerary
             first_itin = itins[0] if isinstance(itins[0], dict) else None
             if first_itin:
                 if not d.get("origin_iata") and first_itin.get("origin_iata"):
                     d["origin_iata"] = first_itin.get("origin_iata")
                 if not d.get("destination_iata") and first_itin.get("destination_iata"):
                     d["destination_iata"] = first_itin.get("destination_iata")
+                if not d.get("return_date") and first_itin.get("return_date"):
+                    d["return_date"] = first_itin.get("return_date")
+                if not d.get("departure_date") and first_itin.get("departure_date"):
+                    d["departure_date"] = first_itin.get("departure_date")
 
         # If this article has no concrete price anywhere, treat it as an
         # unpriced overview and do not persist it ("price N/A" isn't a deal).
@@ -1845,21 +1971,21 @@ def run_deals_pipeline(
             _mark_source_article_done(d.get("link") or "", source="travel-dealz", note="missing_price")
             continue
 
-        # Campos comunes al artículo: se copian al deal base y luego
-        # se heredan en cada fila de itinerario en expanded_rows.
-        for key in ("miles", "travel_dates_text", "expires_in", "cabin_baggage", "airline", "aircraft"):
-            if article.get(key):
+        # Fields common to the article: copied to the base deal and then
+        # inherited in each itinerary row in expanded_rows.
+        for key in ("miles", "travel_dates_text", "expires_in", "airline", "aircraft", "cabin_baggage", "stops"):
+            if article.get(key) is not None:
                 d[key] = article.get(key)
 
         filtered_raw_deals.append(d)
 
     raw_deals = filtered_raw_deals
 
-    # Enriquecimiento específico para SecretFlying: obtener booking_url y, si falta,
-    # completar precio/origen/destino e IATA/fechas a partir del post individual.
-    # Además, si el post expone varios enlaces de reserva (Skyscanner, etc.),
-    # construimos una lista de itinerarios para poder generar múltiples vuelos
-    # por post, igual que en Travel-Dealz.
+    # SecretFlying-specific enrichment: obtain booking_url and, if missing,
+    # fill in price/origin/destination and IATA/dates from the individual post.
+    # Additionally, if the post exposes multiple booking links (Skyscanner, etc.),
+    # we build a list of itineraries to generate multiple flights
+    # per post, same as in Travel-Dealz.
     for d in raw_deals:
         link = (d.get("link") or "").lower()
         if not link or "secretflying.com" not in link or "/posts/" not in link:
@@ -1872,17 +1998,17 @@ def run_deals_pipeline(
         if not isinstance(article, dict):
             continue
 
-        # booking_url directo a la oferta (Skyscanner, aerolínea, etc.)
+        # Direct booking_url to the offer (Skyscanner, airline, etc.)
         if article.get("booking_url"):
             d["booking_url"] = article["booking_url"]
 
-        # Si en el listado no habíamos podido extraer precio/moneda, usamos el del post
+        # If we couldn't extract price/currency from the listing, use the one from the post
         if d.get("price") is None and article.get("price") is not None:
             d["price"] = article.get("price")
             if article.get("currency"):
                 d["currency"] = article.get("currency")
 
-        # Completar origen/destino e imagen si faltan
+        # Fill in origin/destination and image if missing
         if not d.get("origin") and article.get("origin"):
             d["origin"] = article.get("origin")
         if not d.get("destination") and article.get("destination"):
@@ -1890,7 +2016,7 @@ def run_deals_pipeline(
         if not d.get("image") and not d.get("image_url") and article.get("image"):
             d["image_url"] = article.get("image")
 
-        # Extraer campos estructurados desde la booking_url (vía parser del post)
+        # Extract structured fields from the booking_url (via post parser)
         if article.get("origin_iata"):
             d["origin_iata"] = article.get("origin_iata")
         if article.get("destination_iata"):
@@ -1904,25 +2030,25 @@ def run_deals_pipeline(
         if article.get("roundtrip") is not None:
             d["roundtrip"] = article.get("roundtrip")
 
-        # Lista de itinerarios específicos (uno por booking link externo)
+        # List of specific itineraries (one per external booking link)
         itins = article.get("itineraries")
         if isinstance(itins, list) and itins:
             d["itineraries"] = itins
 
-        # Rutas agrupadas (si el post tiene bloque "Routes:" con precios
-        # por origen/destino).
+        # Grouped routes (if the post has a "Routes:" block with prices
+        # per origin/destination).
         routes = article.get("routes")
         if isinstance(routes, list) and routes:
             d["routes"] = routes
 
-        # Aerolínea principal del deal (si la hemos podido inferir del artículo)
+        # Main airline of the deal (if we were able to infer it from the article)
         if article.get("airline") and not d.get("airline"):
             d["airline"] = article.get("airline")
 
-        # Fallback adicional: si seguimos sin campos estructurados pero ya
-        # tenemos una booking_url (por ejemplo, sacada del listado),
-        # intentamos parsear la URL directamente sin depender del HTML
-        # del post (que a veces está protegido por anti-bots).
+        # Additional fallback: if we still lack structured fields but already
+        # have a booking_url (e.g. extracted from the listing),
+        # try to parse the URL directly without depending on the post's
+        # HTML (which is sometimes protected by anti-bots).
         if d.get("booking_url"):
             bf = _extract_secretflying_from_booking_url(str(d["booking_url"]))
             if bf:
@@ -1939,40 +2065,35 @@ def run_deals_pipeline(
                 if d.get("roundtrip") is None and bf.get("roundtrip") is not None:
                     d["roundtrip"] = bf["roundtrip"]
 
-    # Optional enrichment with image + structured fields (OpenAI-powered)
-    # Default behaviour can be controlled via env var DEALS_ENRICH_DEFAULT.
-    if enrich is None:
-        enrich_default = os.getenv("DEALS_ENRICH_DEFAULT", "true").strip().lower() in {"1", "true", "yes", "on"}
-        enrich = enrich_default
-
+    # All fields are deterministic — no LLM enrichment step.
     enriched_deals = raw_deals
-    if enrich:
-        # Default: enrich all collected deals (bounded by pipeline limit)
-        # unless the operator caps it via DEALS_ENRICH_MAX_ITEMS.
-        max_enrich_env = os.getenv("DEALS_ENRICH_MAX_ITEMS")
-        if max_enrich_env is None or max_enrich_env.strip() == "":
-            max_enrich = len(raw_deals)
-        else:
-            max_enrich = int(max_enrich_env)
-
-        enriched_deals = enrich_deals_batch(raw_deals, max_items=max_enrich)
-
-    # Normalizar metadatos LLM incluso cuando no se usó OpenAI, para
-    # evitar nulls en clientes que consumen el pipeline en memoria.
-    enriched_deals = [{**d, **_extract_llm_meta(d)} for d in enriched_deals]
 
     # Coalesce fields that can be derived locally before filtering/scoring
     enriched_deals = [_normalize_deal_fields(d) for d in enriched_deals]
 
+    # Fetch destination images from Unsplash for deals that don't have one.
+    try:
+        from services.unsplash_service import fetch_destination_image  # type: ignore
+        for d in enriched_deals:
+            if not d.get("image_url"):
+                city = d.get("destination") or d.get("destination_iata") or ""
+                if city:
+                    img = fetch_destination_image(str(city))
+                    if img:
+                        d["image_url"] = img
+    except Exception:
+        pass  # Unsplash is optional; never break the pipeline
+
     logger.info(
-        "[deals_pipeline] post-enrich enrich=%s enriched_deals=%s",
-        enrich,
+        "[deals_pipeline] normalized enriched_deals=%s",
         len(enriched_deals),
     )
 
+    # Exclude one-way flights — deals without a return date are skipped.
+    enriched_deals = [d for d in enriched_deals if d.get("return_date")]
+
     # Optional: keep only deals whose origin_iata matches a configured filter
-    # (e.g. ZRH, BSL) so that the catalogue focuses on departures from
-    # specific countries/airports. This is driven by ORIGIN_IATA_FILTER.
+    # (defaults to Swiss airports: ZRH, GVA, BSL, BRN, LUG, SIR).
     origin_filter = _get_origin_iata_filter()
     if origin_filter:
         filtered: List[Dict[str, Any]] = []
@@ -1988,14 +2109,14 @@ def run_deals_pipeline(
         len(enriched_deals),
     )
 
-    benchmarks = _load_amadeus_benchmarks()
+    benchmarks = _load_duffel_benchmarks()
     scored_deals = score_deals(enriched_deals, benchmarks=benchmarks)
 
     logger.info("[deals_pipeline] scored scored_deals=%s", len(scored_deals))
 
-    # Deduplicar deals a nivel de artículo usando booking_url (y, si falta,
-    # el propio link del artículo) para evitar repetir el mismo deal cuando
-    # llega de varias fuentes/listados.
+    # Deduplicate deals at the article level using booking_url (and, if missing,
+    # the article link itself) to avoid repeating the same deal when
+    # it comes from multiple sources/listings.
     unique_scored: List[Dict[str, Any]] = []
     seen_article_urls: set[str] = set()
     for d in scored_deals:
@@ -2017,9 +2138,9 @@ def run_deals_pipeline(
         "on",
     }
 
-    # Asegurar que los deals devueltos por el pipeline ya lleven un valor
-    # razonable de millas, para que HTML/newsletter no dependan solo de la
-    # capa de persistencia.
+    # Ensure that deals returned by the pipeline already carry a reasonable
+    # miles value, so that HTML/newsletter don't depend solely on the
+    # persistence layer.
     if deterministic_enabled:
         for d in scored_deals:
             if d.get("miles") or d.get("miles_estimate"):
@@ -2046,7 +2167,7 @@ def run_deals_pipeline(
                 roundtrip=is_roundtrip,
             )
             if best_prog and isinstance(best_miles, int) and best_miles > 0:
-                d["miles"] = f"{best_prog}: {best_miles:,}".replace(",", "'")
+                d["miles"] = f"{best_prog} · " + f"{best_miles:,}".replace(",", "'")
                 continue
 
             # Fallback: raw approximation without program.
@@ -2056,11 +2177,35 @@ def run_deals_pipeline(
 
     html_snippet = render_html_snippet(scored_deals, max_items=max_items_html or limit)
 
+    # Tier-split HTML: Economy deals → deals_free.html, Business/PE/First → deals_premium.html
+    try:
+        from scoring.html_output import build_deals_html  # type: ignore
+        tier_limit = max_items_html or limit
+        free_deals = [d for d in scored_deals if _assign_tier(d) == "free"]
+        premium_deals = [d for d in scored_deals if _assign_tier(d) == "premium"]
+        html_free = build_deals_html(free_deals, max_items=tier_limit)
+        html_premium = build_deals_html(premium_deals, max_items=tier_limit)
+
+        snippets_dir = os.path.join(os.path.dirname(__file__), "..", "snippets")
+        os.makedirs(snippets_dir, exist_ok=True)
+        with open(os.path.join(snippets_dir, "deals_free.html"), "w", encoding="utf-8") as fh:
+            fh.write(html_free)
+        with open(os.path.join(snippets_dir, "deals_premium.html"), "w", encoding="utf-8") as fh:
+            fh.write(html_premium)
+        logger.info(
+            "[deals_pipeline] tier HTML written: free=%s premium=%s",
+            len(free_deals), len(premium_deals),
+        )
+    except Exception as _tier_err:
+        logger.warning("[deals_pipeline] tier HTML generation failed: %r", _tier_err)
+
     result: Dict[str, Any] = {
         "count": len(scored_deals),
         "sources_enabled": list(sources_enabled),
         "deals": scored_deals,
         "html_snippet": html_snippet,
+        "free_count": len([d for d in scored_deals if _assign_tier(d) == "free"]),
+        "premium_count": len([d for d in scored_deals if _assign_tier(d) == "premium"]),
     }
 
     if persist and scored_deals:
@@ -2104,8 +2249,6 @@ def run_deals_pipeline(
                         row["airline_code"] = itin.get("airline_code")
                     if itin.get("aircraft"):
                         row["aircraft"] = itin.get("aircraft")
-                    if itin.get("cabin_baggage"):
-                        row["cabin_baggage"] = itin.get("cabin_baggage")
                     if itin.get("cabin_class"):
                         row["cabin_class"] = itin.get("cabin_class")
                     if itin.get("miles"):
@@ -2130,13 +2273,13 @@ def run_deals_pipeline(
             else:
                 expanded_rows.append(d)
 
-        # Guardar versión "limpia" para consumo directo en la tabla unificada
-        # public.deals. Ya no persistimos copias en tablas por fuente
+        # Save clean version for direct consumption in the unified table
+        # public.deals. We no longer persist copies in per-source tables
         # (deals_traveldealz/deals_secretflying).
         deals_payload: List[Dict[str, Any]] = []
 
         for d in expanded_rows:
-            # Construir nombre corto del vuelo: "Zürich (ZRH) → Los Angeles (LAX)"
+            # Build short flight name: "Zürich (ZRH) → Los Angeles (LAX)"
             origin_iata = d.get("origin_iata")
             dest_iata = d.get("destination_iata")
             origin_city = _resolve_city_name(d.get("origin") or d.get("origin_city"), origin_iata)
@@ -2146,8 +2289,8 @@ def run_deals_pipeline(
                 code_str = str(code).strip().upper() if isinstance(code, str) else None
                 city_str = _resolve_city_name(city, code_str)
 
-                # Solo añadimos paréntesis si tenemos un IATA claro (3 letras)
-                # y distinto del nombre de la ciudad.
+                # Only add parentheses if we have a clear IATA code (3 letters)
+                # that is different from the city name.
                 if city_str and code_str and len(code_str) == 3 and code_str.isalpha() and code_str != city_str.upper():
                     return f"{city_str} ({code_str})"
                 if city_str:
@@ -2161,7 +2304,7 @@ def run_deals_pipeline(
 
             flight_name = None
             if origin_label and dest_label:
-                # Mismo formato que en Travel-Dealz: "Ciudad (IATA) → Ciudad (IATA)"
+                # Same format as in Travel-Dealz: "City (IATA) → City (IATA)"
                 flight_name = f"{origin_label} → {dest_label}"
             elif origin_label:
                 flight_name = origin_label
@@ -2182,8 +2325,8 @@ def run_deals_pipeline(
                     return s or None
                 return str(v)
 
-            # Asegurar que siempre tengamos un valor razonable de millas.
-            # Guardamos SIEMPRE como texto (una sola columna "miles").
+            # Ensure we always have a reasonable miles value.
+            # Always stored as text (a single "miles" column).
             miles_raw = d.get("miles") or d.get("miles_estimate")
             if deterministic_enabled and (not miles_raw) and origin_iata and dest_iata:
                 try:
@@ -2201,79 +2344,58 @@ def run_deals_pipeline(
                         roundtrip=is_roundtrip,
                     )
                     if best_prog and isinstance(best_miles, int) and best_miles > 0:
-                        miles_raw = f"{best_prog}: {best_miles:,}".replace(",", "'")
+                        miles_raw = f"{best_prog} · " + f"{best_miles:,}".replace(",", "'")
                     else:
                         approx = approximate_program_miles(gc_miles)
                         if approx is not None:
                             miles_raw = approx
 
-            miles_value = _fmt_miles_text(miles_raw)
+            miles_value = _normalize_miles_display(_fmt_miles_text(miles_raw))
 
             row_payload: Dict[str, Any] = {
                 "title": d.get("title"),
                 "price": d.get("price"),
-                # En deals, guardamos ambas URLs: artículo y booking_url concreta.
-                # Si por alguna razón no hay link de artículo pero sí booking_url,
-                # usamos booking_url como fallback para link.
+                # link = article URL; booking_url = concrete flight booking URL (may be null)
                 "link": d.get("link") or d.get("booking_url"),
                 "booking_url": (
-                    d.get("booking_url")
-                    if d.get("booking_url") and d.get("booking_url") != d.get("link")
-                    else None
+                    None  # TravelDealz: go2.travel-dealz.de links are not booking URLs
+                    if "travel-dealz" in str(d.get("source") or "").lower()
+                    else (
+                        d.get("booking_url")
+                        if d.get("booking_url") and d.get("booking_url") != d.get("link")
+                        else None
+                    )
                 ),
                 "currency": d.get("currency"),
-                "image": d.get("image") or d.get("image_url"),
-                "cabin_baggage": d.get("cabin_baggage") or d.get("baggage_summary"),
+                "image": d.get("image"),  # always Unsplash (set by _normalize_deal_fields)
                 "aircraft": d.get("aircraft"),
                 "airline": d.get("airline") or d.get("airline_name"),
-                # En deals, origin/destination deben ser los nombres largos (ciudad)
-                # Si solo conocemos el IATA, dejamos origin/destination a null y
-                # guardamos el código en origin_iata/destination_iata.
                 "origin": origin_city,
                 "destination": dest_city,
                 "miles": miles_value,
                 "expires_in": d.get("expires_in"),
-                # Nuevo campo: rango de meses/fechas tal como aparece en el artículo
-                # Se basa en travel_dates_text extraído por el parser de Travel-Dealz.
-                "date_range": d.get("travel_dates_text") or d.get("travel_dates_summary"),
-                # Nuevas columnas en tabla public.deals
                 "date_out": d.get("departure_date"),
                 "date_in": d.get("return_date"),
-                "cabin_class": d.get("cabin_class"),
-                "one_way": d.get("oneway"),
-                "flight": flight_name,
+                "cabin_class": _normalize_cabin_class(d.get("cabin_class")),
                 "origin_iata": d.get("origin_iata"),
                 "destination_iata": d.get("destination_iata"),
-                # Metadatos de scoring/fuente
                 "source": d.get("source"),
-                # En BD la columna se llama "scoring" (texto/numérico),
-                # pero en memoria usamos "score".
                 "scoring": d.get("score"),
-                # Nuevos campos de duración de vuelo y equipaje
                 "flight_duration_minutes": d.get("flight_duration_minutes"),
                 "flight_duration_display": d.get("flight_duration_display"),
                 "baggage_included": d.get("baggage_included"),
                 "baggage_pieces_included": d.get("baggage_pieces_included"),
                 "baggage_allowance_kg": d.get("baggage_allowance_kg"),
-                "baggage_allowance_display": d.get("baggage_allowance_display")
-                or d.get("cabin_baggage")
-                or d.get("baggage_summary"),
-                # Metadatos del enriquecimiento LLM (normalizados)
-                **_extract_llm_meta(d),
+                "stops": d.get("stops"),
+                "skyscanner_url": d.get("skyscanner_url"),
+                "travel_period_display": d.get("travel_period_display"),
+                "tier": _assign_tier(d),
             }
-
-            # Travel-Dealz sometimes has no concrete booking URL (e.g. Google Flights only,
-            # or article-style promo posts). In those cases we still want upsert stability
-            # in Supabase. Using the article link as booking_url is safe here because
-            # Travel-Dealz rows are conceptually "one per article" when no flight URL exists.
-            source_label = str(d.get("source") or "").lower()
-            if "travel-dealz" in source_label and not row_payload.get("booking_url") and row_payload.get("link"):
-                row_payload["booking_url"] = row_payload["link"]
 
             deals_payload.append(row_payload)
 
-        # Para SecretFlying queremos un registro por ruta agregada (cuando el
-        # post tenga bloque "Routes:"), en lugar de solo uno por post.
+        # For SecretFlying we want one record per aggregated route (when the
+        # post has a "Routes:" block), instead of just one per post.
         for base in scored_deals:
             source_label = str(base.get("source") or "").lower()
             if "secretflying" not in source_label:
@@ -2297,15 +2419,15 @@ def run_deals_pipeline(
 
             base_routes = base.get("routes")
             if isinstance(base_routes, list) and base_routes:
-                # Un registro por ruta declarada en el bloque "Routes:".
+                # One record per route declared in the "Routes:" block.
                 for r in base_routes:
                     if not isinstance(r, dict):
                         continue
                     origin_city = r.get("origin") or base_origin_city
                     dest_city = r.get("destination") or base_dest_city
 
-                    # Permitir IATAs específicas por ruta si el parser las
-                    # proporciona; si no, usar las del deal base.
+                    # Allow route-specific IATAs if the parser provides them;
+                    # otherwise use those from the base deal.
                     route_origin_iata = r.get("origin_iata") or base_origin_iata
                     route_dest_iata = r.get("destination_iata") or base_dest_iata
 
@@ -2324,37 +2446,29 @@ def run_deals_pipeline(
                     if price_route is None:
                         price_route = base.get("price")
 
-                    # booking_url específico por ruta si existe y es distinto
-                    # del link principal. Si no hay uno claro, dejamos NULL para
-                    # evitar conflictos con la constraint única en Supabase.
+                    # Route-specific booking_url if it exists and differs
+                    # from the main link. If there is no clear one, we leave NULL to
+                    # avoid conflicts with the unique constraint in Supabase.
                     route_booking_url = r.get("booking_url") or base.get("booking_url")
                     if not route_booking_url or route_booking_url == base.get("link"):
                         route_booking_url = None
 
                     sf_row: Dict[str, Any] = {
-                        # Título original de la página de SecretFlying
                         "title": base.get("title") or flight_name,
                         "price": price_route,
-                        # Igual que arriba: si no hay link de artículo pero sí
-                        # booking_url, usamos booking_url como fallback para link.
                         "link": base.get("link") or base.get("booking_url"),
                         "booking_url": route_booking_url,
                         "currency": base.get("currency"),
-                        "image": base.get("image") or base.get("image_url"),
-                        "cabin_baggage": base.get("cabin_baggage") or base.get("baggage_summary"),
+                        "image": base.get("image"),
                         "aircraft": base.get("aircraft"),
                         "airline": base.get("airline") or base.get("airline_name"),
                         "origin": origin_city,
                         "destination": dest_city,
-                        "miles": base.get("miles")
-                        or base.get("miles_estimate"),
+                        "miles": _normalize_miles_display(base.get("miles") or base.get("miles_estimate")),
                         "expires_in": base.get("expires_in"),
-                        "date_range": base.get("travel_dates_text") or base.get("travel_dates_summary"),
                         "date_out": base.get("departure_date"),
                         "date_in": base.get("return_date"),
-                        "cabin_class": base.get("cabin_class"),
-                        "one_way": base.get("oneway"),
-                        "flight": flight_name,
+                        "cabin_class": _normalize_cabin_class(base.get("cabin_class")),
                         "origin_iata": route_origin_iata,
                         "destination_iata": route_dest_iata,
                         "source": base.get("source"),
@@ -2364,11 +2478,11 @@ def run_deals_pipeline(
                         "baggage_included": base.get("baggage_included"),
                         "baggage_pieces_included": base.get("baggage_pieces_included"),
                         "baggage_allowance_kg": base.get("baggage_allowance_kg"),
-                        "baggage_allowance_display": base.get("baggage_allowance_display")
-                        or base.get("cabin_baggage")
-                        or base.get("baggage_summary"),
-                        **_extract_llm_meta(base),
-                    }
+                        "stops": base.get("stops"),
+                        "skyscanner_url": base.get("skyscanner_url"),
+                        "travel_period_display": base.get("travel_period_display"),
+                        "tier": _assign_tier(base),
+                            }
 
                     if not sf_row.get("miles") and sf_row.get("origin_iata") and sf_row.get("destination_iata"):
                         try:
@@ -2379,10 +2493,10 @@ def run_deals_pipeline(
                         except Exception:
                             pass
 
-                    # SecretFlying también se refleja en deals (tabla agregada)
+                    # SecretFlying is also reflected in deals (aggregated table)
                     deals_payload.append(sf_row)
             else:
-                # Fallback: un solo registro por post (comportamiento previo).
+                # Fallback: a single record per post (previous behaviour).
                 origin_label = _fmt_place_sf(base_origin_city, base_origin_iata)
                 dest_label = _fmt_place_sf(base_dest_city, base_dest_iata)
 
@@ -2395,7 +2509,6 @@ def run_deals_pipeline(
                     flight_name = dest_label
 
                 sf_row: Dict[str, Any] = {
-                    # Título original del post como en la página
                     "title": base.get("title") or flight_name,
                     "price": base.get("price"),
                     "link": base.get("link") or base.get("booking_url"),
@@ -2405,21 +2518,16 @@ def run_deals_pipeline(
                         else None
                     ),
                     "currency": base.get("currency"),
-                    "image": base.get("image") or base.get("image_url"),
-                    "cabin_baggage": base.get("cabin_baggage") or base.get("baggage_summary"),
+                    "image": base.get("image"),
                     "aircraft": base.get("aircraft"),
                     "airline": base.get("airline") or base.get("airline_name"),
                     "origin": base_origin_city,
                     "destination": base_dest_city,
-                    "miles": base.get("miles")
-                    or base.get("miles_estimate"),
+                    "miles": _normalize_miles_display(base.get("miles") or base.get("miles_estimate")),
                     "expires_in": base.get("expires_in"),
-                    "date_range": base.get("travel_dates_text") or base.get("travel_dates_summary"),
                     "date_out": base.get("departure_date"),
                     "date_in": base.get("return_date"),
-                    "cabin_class": base.get("cabin_class"),
-                    "one_way": base.get("oneway"),
-                    "flight": flight_name,
+                    "cabin_class": _normalize_cabin_class(base.get("cabin_class")),
                     "origin_iata": base_origin_iata,
                     "destination_iata": base_dest_iata,
                     "source": base.get("source"),
@@ -2429,11 +2537,11 @@ def run_deals_pipeline(
                     "baggage_included": base.get("baggage_included"),
                     "baggage_pieces_included": base.get("baggage_pieces_included"),
                     "baggage_allowance_kg": base.get("baggage_allowance_kg"),
-                    "baggage_allowance_display": base.get("baggage_allowance_display")
-                    or base.get("cabin_baggage")
-                    or base.get("baggage_summary"),
-                    **_extract_llm_meta(base),
-                }
+                    "stops": base.get("stops"),
+                    "skyscanner_url": base.get("skyscanner_url"),
+                    "travel_period_display": base.get("travel_period_display"),
+                    "tier": _assign_tier(base),
+                    }
 
                 if not sf_row.get("miles") and sf_row.get("origin_iata") and sf_row.get("destination_iata"):
                     try:
@@ -2446,9 +2554,9 @@ def run_deals_pipeline(
 
                 deals_payload.append(sf_row)
 
-        # Evitar error de Postgres/Supabase "ON CONFLICT DO UPDATE command cannot
-        # affect row a second time" desduplicando por booking_url dentro del
-        # mismo comando upsert.
+        # Avoid Postgres/Supabase error "ON CONFLICT DO UPDATE command cannot
+        # affect row a second time" by deduplicating by booking_url within the
+        # same upsert command.
         unique_deals_payload = []
         seen_booking_urls: set[str] = set()
         for row in deals_payload:
@@ -2469,10 +2577,10 @@ def run_deals_pipeline(
         if not persisted_ok:
             result["persist_info"] = deals_save_result
 
-        # Sincronizar source_articles solo si la persistencia fue correcta
+        # Sync source_articles only if persistence succeeded
         if persisted_ok and unique_deals_payload:
             _upsert_source_articles_done(scored_deals)
 
-        # 3) Ya no guardamos copias en tablas específicas por fuente
+        # 3) We no longer store copies in per-source tables
 
     return result

@@ -9,7 +9,7 @@ beautifulsoup4
 jinja2
 
 # APIs/SDKs
-amadeus
+duffel-api
 openai
 supabase
 scrapingbee

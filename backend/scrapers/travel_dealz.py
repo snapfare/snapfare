@@ -27,7 +27,6 @@ def _fetch_html(url: str, timeout: int = 10, retries: int = 2) -> str | None:
             return resp.text
         except Exception as e:
             last_err = e
-            # Small backoff to survive transient DNS/connect issues.
             if attempt < retries:
                 time.sleep(0.6 * (attempt + 1))
             continue
@@ -38,32 +37,20 @@ def _fetch_html(url: str, timeout: int = 10, retries: int = 2) -> str | None:
 
 
 def _is_non_flight_deal(title: str, link: str) -> bool:
-    """Heurística sencilla para descartar posts que no son vuelos.
+    """Simple heuristic to discard posts that are not flights.
 
-    Ejemplos: AirHelp Plus, seguros, servicios legales, etc.
-    De momento sólo cubrimos el caso de AirHelp para no ser
-    demasiado agresivos.
+    Examples: AirHelp Plus, insurance, legal services, gift cards.
     """
-
     t = (title or "").lower()
     l = (link or "").lower()
 
-    # AirHelp, seguros, servicios legales, etc.
     if "airhelp" in t or "airhelp" in l:
         return True
 
-    # Gift cards, vales, códigos de descuento genéricos (no itinerarios)
-    giftcard_keywords = [
-        "gift card",
-        "gift-card",
-        "gift cards",
-        "gift-cards",
-        "voucher",
-    ]
-    if any(kw in t for kw in giftcard_keywords) or any(kw in l for kw in giftcard_keywords):
-        return True
+    for kw in ("gift card", "gift-card", "gift cards", "gift-cards", "voucher"):
+        if kw in t or kw in l:
+            return True
 
-    # Caso explícito reportado: ITA Airways gift cards
     if "ita-airways-gift-cards" in l:
         return True
 
@@ -73,13 +60,10 @@ def _is_non_flight_deal(title: str, link: str) -> bool:
 def _extract_price(text: str) -> tuple[float | None, str]:
     """Extract price and currency from text.
 
-    Travel-Dealz suele escribir precios como "1,071" o "2.613" donde las
-    comas/puntos son separadores de miles, no decimales. Para evitar
-    interpretar "1,071" como 1.071 €, conservamos solo los dígitos y
-    tratamos el resultado como un entero en la divisa detectada.
+    Travel-Dealz often writes prices like "1,071" or "2.613" where
+    commas/dots are thousands separators, not decimals. We strip all
+    non-digit characters and treat the result as an integer.
     """
-
-    # Look for patterns like €320, 320€, $280, 280 EUR, etc.
     patterns = [
         (r"€\s*(\d[\d.,']*)", "EUR"),
         (r"(\d[\d.,']*)\s*€", "EUR"),
@@ -93,17 +77,13 @@ def _extract_price(text: str) -> tuple[float | None, str]:
         match = re.search(pattern, text, re.IGNORECASE)
         if not match:
             continue
-
-        raw = match.group(1)
-        # Conservar solo dígitos, tratando ',' '.' y "'" como separadores de miles
-        digits = re.sub(r"[^0-9]", "", raw)
+        digits = re.sub(r"[^0-9]", "", match.group(1))
         if not digits:
             continue
         try:
-            value = float(digits)
+            return float(digits), currency
         except ValueError:
             continue
-        return value, currency
 
     return None, "EUR"
 
@@ -111,45 +91,31 @@ def _extract_price(text: str) -> tuple[float | None, str]:
 def _extract_route_from_title(title: str) -> tuple[str | None, str | None]:
     """Best-effort extraction of origin/destination from the deal title.
 
-    Looks for common separators like "Zürich → Kapstadt", "MAD – NYC", etc.
+    Looks for separators like "Zürich → Kapstadt", "MAD – NYC", etc.
     Returns (origin, destination) or (None, None) if no pattern is found.
 
-    Se evita usar un '-' simple como separador porque aparece dentro
-    de palabras ("Non-Stop", "Round-trip", ...) y genera falsos positivos.
+    Plain '-' is avoided as separator because it appears inside words
+    ("Non-Stop", "Round-trip", ...) and generates false positives.
     """
     if not title:
         return None, None
 
-    raw = title.replace("\u2192", "→")  # normalize arrow if needed
+    raw = title.replace("\u2192", "→")
 
-    separators = [
-        "→",        # City → City
-        "↔",        # City ↔ City
-        " – ",      # City – City (en dash con espacios)
-        " - ",      # City - City (hyphen con espacios)
-        " to ",     # City to City
-    ]
-
+    separators = ["→", "↔", " – ", " - ", " to "]
     for sep in separators:
         if sep in raw:
             left, right = raw.split(sep, 1)
-            left = left.strip()
-            right = right.strip()
-
-            # Si alguna de las partes contiene dígitos o símbolos de moneda,
-            # asumimos que no es solo nombre de ciudad y descartamos.
+            left, right = left.strip(), right.strip()
             if any(ch.isdigit() for ch in left + right):
                 continue
             if any(sym in (left + right) for sym in ["€", "$", "£", "CHF", "USD", "EUR"]):
                 continue
-
             if len(left) >= 3 and len(right) >= 3:
                 return left, right
 
-    # Patrón adicional típico de Travel-Dealz:
-    #   "Perth, Australia: €2,786 Star Alliance Business Class from Budapest"
-    # Interpretamos lo que va antes de los dos puntos como DESTINO
-    # y el fragmento después de "from" como ORIGEN.
+    # Pattern: "Perth, Australia: €2,786 Star Alliance Business Class from Budapest"
+    # Interpret everything before ':' as DESTINATION, "from X" fragment as ORIGIN.
     if ":" in raw and " from " in raw.lower():
         dest_part = raw.split(":", 1)[0].strip()
         m = re.search(r"from\s+([A-Za-z\s\-/]+?)(?:$|[,(])", raw, re.IGNORECASE)
@@ -165,260 +131,150 @@ def _extract_image_from_article(article, base_url: str) -> str | None:
     """Try to get a representative image URL from a listing card/article."""
     if not article:
         return None
-    img = article.find('img')
+    img = article.find("img")
     if not img:
         return None
-    src = img.get('data-src') or img.get('data-lazy-src') or img.get('src')
+    src = img.get("data-src") or img.get("data-lazy-src") or img.get("src")
     if not src:
         return None
     src = src.strip()
-    if src.startswith('//'):
-        src = 'https:' + src
-    if src.startswith('/'):
+    if src.startswith("//"):
+        src = "https:" + src
+    if src.startswith("/"):
         src = urljoin(base_url, src)
     return src
 
 
-def get_deals(limit: int = 100) -> List[Dict]:
-    """Scrape travel deals from travel-dealz.com/category/flights/.
+def _extract_title_from_article(article) -> str:
+    """Extract title text from an article/card element using progressive fallbacks."""
+    # 1) Heading elements with text
+    for tag in ("h1", "h2", "h3"):
+        h = article.find(tag)
+        if h and h.get_text(strip=True):
+            return h.get_text(strip=True)
 
-    No content filters: just go page by page and extract
-    title, price (if any) and link from each article/card.
-    """
+    # 2) Link inside heading
+    for tag in ("h1", "h2", "h3"):
+        a = article.find(tag)
+        if a:
+            a_link = a.find("a", href=True)
+            if a_link and a_link.get_text(strip=True):
+                return a_link.get_text(strip=True)
+
+    # 3) Bookmark link or /deal/ link
+    a_book = article.find("a", attrs={"rel": "bookmark"})
+    if a_book and a_book.get_text(strip=True):
+        return a_book.get_text(strip=True)
+    for a in article.find_all("a", href=True):
+        txt = a.get_text(strip=True)
+        if txt and "/deal/" in a["href"]:
+            return txt
+
+    # 4) Any link with reasonable text
+    for a in article.find_all("a", href=True):
+        txt = a.get_text(strip=True)
+        if txt and len(txt) > 3:
+            return txt
+
+    # 5) Fallback: block text
+    return article.get_text(strip=True)[:200]
+
+
+def _slug_title(link: str) -> str | None:
+    """Derive a readable title from a deal URL slug."""
+    try:
+        slug = urlparse(link).path.rstrip("/").split("/")[-1]
+        if slug:
+            return unquote(slug).replace("-", " ").strip().title()[:200]
+    except Exception:
+        pass
+    return None
+
+
+def _scrape_category(base_url: str, category_url: str, limit: int) -> List[Dict]:
+    """Paginate a Travel-Dealz category listing and return raw deal dicts."""
     deals: List[Dict] = []
+    log_prefix = "[travel-dealz.de]" if ".de" in base_url else "[travel-dealz]"
 
     try:
-        base_url = "https://travel-dealz.com"
-        category_url = f"{base_url}/category/flights"
+        pages_needed = max(1, (int(limit) + 19) // 20)
+    except Exception:
+        pages_needed = 5
+    max_pages = max(5, min(50, pages_needed + 1))
 
-        page = 1
-        # Menos páginas por defecto para que la API responda rápido, pero si el
-        # caller pide un límite alto (p.ej. bulk ingest), necesitamos recorrer
-        # más páginas o nunca llegaremos a `limit`.
-        # Estimación: ~20 posts/página.
-        try:
-            pages_needed = max(1, (int(limit) + 19) // 20)
-        except Exception:
-            pages_needed = 5
-        max_pages = max(5, min(50, pages_needed + 1))
+    page = 1
+    while page <= max_pages and len(deals) < limit:
+        page_url = f"{category_url}/" if page == 1 else f"{category_url}/page/{page}/"
 
-        while page <= max_pages and len(deals) < limit:
-            # Page 1 is the base category URL, next pages use /page/N/
-            if page == 1:
-                page_url = f"{category_url}/"
-            else:
-                page_url = f"{category_url}/page/{page}/"
+        html = _fetch_html(page_url, timeout=10, retries=2)
+        if not html:
+            logger.warning("%s request failed url=%s", log_prefix, page_url)
+            break
 
-            html = _fetch_html(page_url, timeout=10, retries=2)
-            if not html:
-                break
+        soup = BeautifulSoup(html, "html.parser")
+        articles = soup.find_all(["article", "div"], class_=re.compile(r"(post|deal|offer|card)", re.I))
+        if not articles:
+            logger.warning("%s no articles found url=%s", log_prefix, page_url)
+            break
 
-            soup = BeautifulSoup(html, 'html.parser')
+        for article in articles:
+            title = _extract_title_from_article(article)
 
-            # Generic search for posts/deal cards
-            articles = soup.find_all(['article', 'div'], class_=re.compile(r'(post|deal|offer|card)', re.I))
-            if not articles:
-                logger.warning("[travel-dealz] no articles found url=%s", page_url)
-                break
+            link_elem = article.find("a", href=True)
+            link = link_elem["href"] if link_elem else base_url
+            if link.startswith("/"):
+                link = base_url.rstrip("/") + link
 
-            for article in articles:
-                # Title: robust heuristics
-                title = ""
-                # 1) Heading elements with text
-                for tag in ('h1', 'h2', 'h3'):
-                    h = article.find(tag)
-                    if h and h.get_text(strip=True):
-                        title = h.get_text(strip=True)
-                        break
+            if "/deal/" not in link:
+                continue
+            if _is_non_flight_deal(title, link):
+                continue
 
-                # 2) Link inside heading (common pattern: <h2><a>Title</a></h2>)
-                if not title:
-                    for tag in ('h1', 'h2', 'h3'):
-                        a = article.find(tag)
-                        if a:
-                            a_link = a.find('a', href=True)
-                            if a_link and a_link.get_text(strip=True):
-                                title = a_link.get_text(strip=True)
-                                break
+            if not title and link:
+                title = _slug_title(link) or ""
 
-                # 3) <a rel="bookmark"> or first meaningful link to a /deal/
-                if not title:
-                    a_book = article.find('a', attrs={'rel': 'bookmark'})
-                    if a_book and a_book.get_text(strip=True):
-                        title = a_book.get_text(strip=True)
-                if not title:
-                    # prefer links that point to /deal/ urls and have text
-                    for a in article.find_all('a', href=True):
-                        href = a['href']
-                        txt = a.get_text(strip=True)
-                        if txt and '/deal/' in href:
-                            title = txt
-                            break
+            # Correct date-as-title (e.g. "December 30, 2025") using URL slug.
+            if title and re.fullmatch(r"[A-Za-z]+ \d{1,2}, \d{4}", title.strip()):
+                slug_t = _slug_title(link)
+                if slug_t:
+                    title = slug_t
 
-                # 4) Any link with reasonable text
-                if not title:
-                    for a in article.find_all('a', href=True):
-                        txt = a.get_text(strip=True)
-                        if txt and len(txt) > 3:
-                            title = txt
-                            break
+            price, currency = _extract_price(article.get_text())
+            origin, destination = _extract_route_from_title(title)
+            image_url = _extract_image_from_article(article, base_url=base_url)
 
-                # 5) Fallback: block text
-                if not title:
-                    title = article.get_text(strip=True)[:200]
+            deals.append({
+                "title": title[:200] if title else "",
+                "price": price,
+                "currency": currency,
+                "link": link,
+                "origin": origin,
+                "destination": destination,
+                "image_url": image_url,
+                "source": "Travel-Dealz.de" if ".de" in base_url else "Travel-Dealz",
+            })
 
-                # Link: first href in the article/card
-                link_elem = article.find('a', href=True)
-                link = link_elem['href'] if link_elem else base_url
-                if link.startswith('/'):
-                    link = base_url.rstrip('/') + link
+            if len(deals) >= limit:
+                return deals
 
-                # Solo consideramos URLs de tipo /deal/...; ignorar ticker, promos, etc.
-                if '/deal/' not in link:
-                    continue
-
-                # Descartar posts que claramente no son vuelos (p.ej. AirHelp Plus).
-                if _is_non_flight_deal(title, link):
-                    continue
-
-                # If we still don't have a title, derive one from the URL slug
-                if not title and link:
-                    try:
-                        parsed = urlparse(link)
-                        slug = parsed.path.rstrip('/').split('/')[-1]
-                        if slug:
-                            title = unquote(slug).replace('-', ' ').strip().title()[:200]
-                    except Exception:
-                        pass
-
-                # Price (best-effort; no filtering if missing)
-                price_text = article.get_text()
-                price, currency = _extract_price(price_text)
-
-                # Origin / destination heuristic from title
-                origin, destination = _extract_route_from_title(title)
-
-                # Image from listing card if present
-                image_url = _extract_image_from_article(article, base_url=base_url)
-
-                deal = {
-                    "title": title[:200] if title else "",
-                    "price": price,
-                    "currency": currency,
-                    "link": link,
-                    "origin": origin,
-                    "destination": destination,
-                    "image_url": image_url,
-                    "source": "Travel-Dealz",
-                }
-                deals.append(deal)
-
-                if len(deals) >= limit:
-                    return deals
-
-            page += 1
-
-    except Exception as e:
-        # In case of error, just return whatever we already collected
-        logger.warning("[travel-dealz] unexpected error=%r", e)
+        page += 1
 
     return deals
+
+
+def get_deals(limit: int = 100) -> List[Dict]:
+    """Scrape travel deals from travel-dealz.com/category/flights/."""
+    try:
+        return _scrape_category("https://travel-dealz.com", "https://travel-dealz.com/category/flights", limit)
+    except Exception as e:
+        logger.warning("[travel-dealz] unexpected error=%r", e)
+        return []
 
 
 def get_deals_de(limit: int = 100) -> List[Dict]:
-    """Scrape travel deals from https://travel-dealz.de/kategorie/fluge/.
-
-    Mismo comportamiento que get_deals() pero apuntando al dominio .de.
-    Sin filtros de contenido: recorre página por página y extrae
-    título, precio (si lo hay) y enlace de cada artículo/tarjeta.
-    """
-    deals: List[Dict] = []
-
+    """Scrape travel deals from travel-dealz.de/kategorie/fluge/."""
     try:
-        base_url = "https://travel-dealz.de"
-        category_url = f"{base_url}/kategorie/fluge"
-
-        page = 1
-        # Igual que en .com: crecer max_pages cuando el límite es alto.
-        try:
-            pages_needed = max(1, (int(limit) + 19) // 20)
-        except Exception:
-            pages_needed = 5
-        max_pages = max(5, min(50, pages_needed + 1))
-
-        while page <= max_pages and len(deals) < limit:
-            if page == 1:
-                page_url = f"{category_url}/"
-            else:
-                page_url = f"{category_url}/page/{page}/"
-
-            html = _fetch_html(page_url, timeout=10, retries=2)
-            if not html:
-                # Keep log prefix compatible with existing messages.
-                logger.warning("[travel-dealz.de] request failed url=%s", page_url)
-                break
-
-            soup = BeautifulSoup(html, 'html.parser')
-
-            articles = soup.find_all(['article', 'div'], class_=re.compile(r'(post|deal|offer|card)', re.I))
-            if not articles:
-                logger.warning("[travel-dealz.de] no articles found url=%s", page_url)
-                break
-
-            for article in articles:
-                title_elem = article.find(['h1', 'h2', 'h3', 'a'], class_=re.compile(r'(title|heading)', re.I))
-                if not title_elem:
-                    title_elem = article.find(['h1', 'h2', 'h3', 'a'])
-
-                title = title_elem.get_text(strip=True) if title_elem else article.get_text(strip=True)[:200]
-
-                link_elem = article.find('a', href=True)
-                link = link_elem['href'] if link_elem else base_url
-                if link.startswith('/'):
-                    link = base_url.rstrip('/') + link
-
-                # Solo consideramos URLs de tipo /deal/...; ignorar ticker, promos, etc.
-                if '/deal/' not in link:
-                    continue
-
-                # Descartar posts que claramente no son vuelos (p.ej. AirHelp Plus).
-                if _is_non_flight_deal(title, link):
-                    continue
-
-                # If we still don't have a title, derive one from the URL slug
-                if not title and link:
-                    try:
-                        parsed = urlparse(link)
-                        slug = parsed.path.rstrip('/').split('/')[-1]
-                        if slug:
-                            title = unquote(slug).replace('-', ' ').strip().title()[:200]
-                    except Exception:
-                        pass
-
-                price_text = article.get_text()
-                price, currency = _extract_price(price_text)
-
-                origin, destination = _extract_route_from_title(title)
-                image_url = _extract_image_from_article(article, base_url=base_url)
-
-                deals.append({
-                    "title": title[:200] if title else "",
-                    "price": price,
-                    "currency": currency,
-                    "link": link,
-                    "origin": origin,
-                    "destination": destination,
-                    "image_url": image_url,
-                    "source": "Travel-Dealz.de",
-                })
-
-                if len(deals) >= limit:
-                    return deals
-
-            page += 1
-
+        return _scrape_category("https://travel-dealz.de", "https://travel-dealz.de/kategorie/fluge", limit)
     except Exception as e:
         logger.warning("[travel-dealz.de] unexpected error=%r", e)
-
-    return deals
-
+        return []

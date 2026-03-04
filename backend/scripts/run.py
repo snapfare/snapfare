@@ -1,12 +1,12 @@
 #!/usr/bin/env python
-"""Launcher unificado para servidor y jobs de snapcore.
+"""Unified launcher for snapcore server and jobs.
 
-Ejemplos (desde la raíz del repo):
+Examples (from the repo root):
 
-  # Arrancar servidor FastAPI con uvicorn
+  # Start FastAPI server with uvicorn
   python -m backend.scripts.run server
 
-  # Ejecutar el pipeline de deals en modo "swiss_newsletter"
+  # Run the deals pipeline in "swiss_newsletter" mode
   python -m backend.scripts.run pipeline --mode swiss_newsletter
 
 """
@@ -29,27 +29,27 @@ from typing import Any, Dict, Iterable
 
 from dotenv import load_dotenv, find_dotenv
 
-# Asegurar paths correctos
+# Ensure correct paths
 THIS_DIR = Path(__file__).resolve().parent
 BACKEND_ROOT = THIS_DIR.parent
 REPO_ROOT = BACKEND_ROOT.parent
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-# Cargar .env de la raíz
+# Load .env from the root
 load_dotenv(find_dotenv())
 
-# Cliente Supabase (para operaciones opcionales de limpieza/cascada)
-try:  # Import lazy-safe: si no hay Supabase, _client será None
+# Supabase client (for optional cleanup/cascade operations)
+try:  # Lazy-safe import: if Supabase is unavailable, _client will be None
     from database.supabase_db import _client  # type: ignore
-except Exception:  # pragma: no cover - entorno sin Supabase
+except Exception:  # pragma: no cover - environment without Supabase
     _client = None
 
 
 def _load_run_config() -> Dict[str, Any]:
     cfg_path = REPO_ROOT / "run_config.json"
     if not cfg_path.exists():
-        raise SystemExit(f"run_config.json no encontrado en {cfg_path}")
+        raise SystemExit(f"run_config.json not found at {cfg_path}")
     # On Windows it's common for UTF-8 files to be saved with BOM.
     # json.load() will fail unless we strip it, so use utf-8-sig.
     with cfg_path.open("r", encoding="utf-8-sig") as f:
@@ -60,11 +60,11 @@ def _get_mode(cfg: Dict[str, Any], mode: str) -> Dict[str, Any]:
     modes = cfg.get("modes") or {}
     if mode not in modes:
         available = ", ".join(sorted(modes.keys()))
-        raise SystemExit(f"Modo '{mode}' no definido en run_config.json. Modos disponibles: {available}")
+        raise SystemExit(f"Mode '{mode}' not defined in run_config.json. Available modes: {available}")
     return modes[mode]
 
 
-def _parse_amadeus_origins(value: Any) -> list[str]:
+def _parse_duffel_origins(value: Any) -> list[str]:
     """Parse a single, list, or comma-separated list of IATA origins.
 
     Accepted formats:
@@ -91,7 +91,7 @@ def _parse_amadeus_origins(value: Any) -> list[str]:
 
 
 def cmd_server(args: argparse.Namespace) -> None:
-    """Arrancar uvicorn sobre backend.app:app."""
+    """Start uvicorn on backend.app:app."""
 
     # Optional: apply a run_config mode before starting the server.
     # This allows `default_command=server` with `default_mode=...` and
@@ -112,8 +112,8 @@ def cmd_server(args: argparse.Namespace) -> None:
         import uvicorn  # type: ignore
     except Exception:
         raise SystemExit(
-            "uvicorn no está instalado en el entorno actual. "
-            "Instala 'uvicorn[standard]' o añade uvicorn a requirements.txt."
+            "uvicorn is not installed in the current environment. "
+            "Install 'uvicorn[standard]' or add uvicorn to requirements.txt."
         )
 
     host = args.host or "127.0.0.1"
@@ -124,15 +124,15 @@ def cmd_server(args: argparse.Namespace) -> None:
 
 
 def _apply_mode_env(mode_cfg: Dict[str, Any]) -> None:
-    """Aplicar variables de entorno derivadas del modo seleccionado."""
+    """Apply environment variables derived from the selected mode."""
 
-    # Compatibilidad: algunos run_config.json (milestone) usan claves como:
-    # - sources (lista) en vez de scraping_sources
-    # - origin en vez de origin_filter
-    # - limit en vez de pipeline_limit
-    # - done_limit en vez de source_articles_done_limit
-    # - scrape.traveldealz/secretflying en vez de scraping_limit_*
-    # - llm.enrich/enrich_max/validate_* en vez de enrich_default/enrich_max_items/llm_validate_*
+    # Compatibility: some run_config.json (milestone) use keys like:
+    # - sources (list) instead of scraping_sources
+    # - origin instead of origin_filter
+    # - limit instead of pipeline_limit
+    # - done_limit instead of source_articles_done_limit
+    # - scrape.traveldealz/secretflying instead of scraping_limit_*
+    # - llm.enrich/enrich_max/validate_* instead of enrich_default/enrich_max_items/llm_validate_*
     def _mode_get(*keys: str, default: Any = None) -> Any:
         for k in keys:
             if k in mode_cfg:
@@ -147,9 +147,9 @@ def _apply_mode_env(mode_cfg: Dict[str, Any]) -> None:
             cur = cur.get(part)
         return cur
 
-    # La activación de fuentes ya no depende de SCRAPING_URL, sino de los
-    # límites por fuente (scraping_limit_*, amadeus_max_calls). Mantenemos
-    # SCRAPING_URL únicamente por compatibilidad si aún se define en el modo.
+    # Source activation no longer depends on SCRAPING_URL, but on the
+    # per-source limits (scraping_limit_*, duffel_max_calls). We keep
+    # SCRAPING_URL solely for backward compatibility if still defined in the mode.
     sources = _mode_get("scraping_sources", "sources")
     if sources:
         os.environ["SCRAPING_URL"] = ",".join(sources)
@@ -160,19 +160,19 @@ def _apply_mode_env(mode_cfg: Dict[str, Any]) -> None:
     if origin_filter:
         os.environ["ORIGIN_IATA_FILTER"] = str(origin_filter)
     else:
-        # Para modos sin filtro explícito, eliminamos cualquier valor
-        # previo heredado del entorno (p.ej. ORIGIN_IATA_FILTER en .env).
+        # For modes without an explicit filter, remove any previous value
+        # inherited from the environment (e.g. ORIGIN_IATA_FILTER in .env).
         os.environ.pop("ORIGIN_IATA_FILTER", None)
 
-    # Permitir fijar el límite de carga de source_articles.done desde el modo
-    # (útil para desactivar el filtro de duplicados en modos de prueba).
+    # Allow setting the source_articles.done load limit from the mode
+    # (useful for disabling the duplicate filter in test modes).
     if "source_articles_done_limit" in mode_cfg or "done_limit" in mode_cfg:
         os.environ["SOURCE_ARTICLES_DONE_LIMIT"] = str(_mode_get("source_articles_done_limit", "done_limit") or 0)
 
-    # Límites opcionales de scraping por fuente (nº máximo de deals
-    # a intentar recoger por Travel-Dealz y SecretFlying). Si no se
-    # definen en el modo, se eliminan del entorno para no arrastrar
-    # valores de ejecuciones anteriores.
+    # Optional per-source scraping limits (max number of deals to
+    # attempt to collect from Travel-Dealz and SecretFlying). If not
+    # defined in the mode, they are removed from the environment to
+    # avoid carrying over values from previous runs.
     td_limit = _mode_get("scraping_limit_travel_dealz")
     if td_limit is None:
         td_limit = _mode_get_nested("scrape.traveldealz")
@@ -216,161 +216,6 @@ def _apply_mode_env(mode_cfg: Dict[str, Any]) -> None:
         os.environ["SCRAPING_LIMIT_SECRETFLYING"] = str(sf_limit)
     else:
         os.environ.pop("SCRAPING_LIMIT_SECRETFLYING", None)
-
-    # --------------------
-    # LLM / OpenAI controls
-    # --------------------
-    # New simplified schema (preferred):
-    #   llm.action: "off" | "fill" | "correct"
-    #     - off:     disables OpenAI enrichment entirely
-    #     - fill:    fill ONLY miles + baggage
-    #     - correct: validate/correct ALL fields (includes baggage + miles)
-    # Optional:
-    #   llm.max_items: cap number of items to enrich
-    #   llm.allow_amadeus: allow OpenAI for Amadeus rows (default false)
-    llm_action_raw = _mode_get_nested("llm.action")
-    llm_action = str(llm_action_raw).strip().lower() if llm_action_raw is not None else None
-
-    llm_action_applied = False
-    if llm_action:
-        # Normalize common aliases
-        if llm_action in {"0", "false", "none", "off", "disabled"}:
-            llm_action = "off"
-        elif llm_action in {"fill", "miles", "miles_baggage", "miles+baggage"}:
-            llm_action = "fill"
-        elif llm_action in {"correct", "validate", "all", "all_fields"}:
-            llm_action = "correct"
-
-        llm_action_applied = llm_action in {"off", "fill", "correct"}
-
-        if llm_action == "off":
-            os.environ["DEALS_ENRICH_DEFAULT"] = "false"
-            os.environ.pop("DEALS_ENRICH_MAX_ITEMS", None)
-            os.environ.pop("DEALS_LLM_ENRICH_MILES", None)
-            os.environ.pop("DEALS_LLM_VALIDATE_ALL", None)
-            os.environ.pop("DEALS_LLM_VALIDATE_BAGGAGE", None)
-            os.environ.pop("DEALS_LLM_ENRICH_AMADEUS", None)
-            os.environ.pop("DEALS_LLM_ALLUCINATE", None)
-
-        else:
-            # Any LLM action implies we run the enrichment step.
-            os.environ["DEALS_ENRICH_DEFAULT"] = "true"
-
-            # Cap items (new key llm.max_items). Fall back to legacy keys.
-            enrich_max = _mode_get_nested("llm.max_items")
-            if enrich_max in (None, ""):
-                enrich_max = _mode_get("enrich_max_items")
-            if enrich_max in (None, ""):
-                enrich_max = _mode_get_nested("llm.enrich_max")
-            if enrich_max in (None, ""):
-                os.environ.pop("DEALS_ENRICH_MAX_ITEMS", None)
-            else:
-                os.environ["DEALS_ENRICH_MAX_ITEMS"] = str(enrich_max)
-
-            allow_amadeus = _mode_get_nested("llm.allow_amadeus")
-            if allow_amadeus is None:
-                allow_amadeus = _mode_get_nested("llm.enrich_amadeus")
-            if allow_amadeus is None:
-                # When LLM is enabled, default to applying it uniformly across sources,
-                # including Amadeus (can still be disabled per-mode via llm.allow_amadeus=false).
-                allow_amadeus = True
-            os.environ["DEALS_LLM_ENRICH_AMADEUS"] = "true" if bool(allow_amadeus) else "false"
-
-            # Keep hallucination off by default (can still be enabled via legacy key).
-            allucinate = _mode_get_nested("llm.allucinate")
-            if allucinate is None:
-                allucinate = _mode_get_nested("llm.hallucinate")
-            if allucinate is None:
-                allucinate = False
-            os.environ["DEALS_LLM_ALLUCINATE"] = "true" if bool(allucinate) else "false"
-
-            if llm_action == "fill":
-                os.environ["DEALS_LLM_ENRICH_MILES"] = "true"
-                os.environ["DEALS_LLM_VALIDATE_BAGGAGE"] = "true"
-                os.environ["DEALS_LLM_VALIDATE_ALL"] = "false"
-            elif llm_action == "correct":
-                os.environ["DEALS_LLM_ENRICH_MILES"] = "true"
-                os.environ["DEALS_LLM_VALIDATE_BAGGAGE"] = "true"
-                os.environ["DEALS_LLM_VALIDATE_ALL"] = "true"
-
-    if not llm_action_applied:
-        # Legacy schema: keep backward compatibility with old run_config.json keys.
-        # Enrichment default: legacy key enrich_default; new key llm.enrich
-        enrich_default_val = None
-        if "enrich_default" in mode_cfg:
-            enrich_default_val = bool(mode_cfg.get("enrich_default"))
-        else:
-            llm_enrich = _mode_get_nested("llm.enrich")
-            if llm_enrich is not None:
-                enrich_default_val = bool(llm_enrich)
-        if enrich_default_val is not None:
-            os.environ["DEALS_ENRICH_DEFAULT"] = "true" if enrich_default_val else "false"
-
-        # Si el modo usa el esquema nuevo (llm.enrich), lo reutilizamos también
-        # para habilitar específicamente el enriquecimiento de millas vía LLM.
-        # Esto evita activar llamadas a OpenAI en modos legacy por sorpresa.
-        llm_enrich_flag = _mode_get_nested("llm.enrich")
-        if llm_enrich_flag is None:
-            os.environ.pop("DEALS_LLM_ENRICH_MILES", None)
-        else:
-            os.environ["DEALS_LLM_ENRICH_MILES"] = "true" if bool(llm_enrich_flag) else "false"
-
-        # Permitir (o no) enriquecimiento LLM para filas de Amadeus.
-        # Por defecto, si llm.enrich está definido, seguimos ese valor.
-        llm_enrich_amadeus = _mode_get_nested("llm.enrich_amadeus")
-        if llm_enrich_amadeus is None:
-            llm_enrich_amadeus = llm_enrich_flag
-        if llm_enrich_amadeus is None:
-            os.environ.pop("DEALS_LLM_ENRICH_AMADEUS", None)
-        else:
-            os.environ["DEALS_LLM_ENRICH_AMADEUS"] = "true" if bool(llm_enrich_amadeus) else "false"
-
-        # Cap opcional de items a enriquecer con LLM; si no se define en el modo
-        # se elimina del entorno para dejarlo ilimitado.
-        enrich_max = _mode_get("enrich_max_items")
-        if enrich_max in (None, ""):
-            enrich_max = _mode_get_nested("llm.enrich_max")
-        if enrich_max in (None, ""):
-            os.environ.pop("DEALS_ENRICH_MAX_ITEMS", None)
-        else:
-            os.environ["DEALS_ENRICH_MAX_ITEMS"] = str(enrich_max)
-
-        # Revisión opcional de campos vía OpenAI
-        validate_all = None
-        if "llm_validate_all" in mode_cfg:
-            validate_all = bool(mode_cfg.get("llm_validate_all"))
-        else:
-            v = _mode_get_nested("llm.validate_all")
-            if v is not None:
-                validate_all = bool(v)
-        if validate_all is None:
-            os.environ.pop("DEALS_LLM_VALIDATE_ALL", None)
-        else:
-            os.environ["DEALS_LLM_VALIDATE_ALL"] = "true" if validate_all else "false"
-
-        # Revisión opcional de equipaje vía OpenAI
-        validate_baggage = None
-        if "llm_validate_baggage" in mode_cfg:
-            validate_baggage = bool(mode_cfg.get("llm_validate_baggage"))
-        else:
-            v = _mode_get_nested("llm.validate_baggage")
-            if v is not None:
-                validate_baggage = bool(v)
-        if validate_baggage is None:
-            os.environ.pop("DEALS_LLM_VALIDATE_BAGGAGE", None)
-        else:
-            os.environ["DEALS_LLM_VALIDATE_BAGGAGE"] = "true" if validate_baggage else "false"
-
-    # Allow "hallucinated" fills (best-effort guesses) when fields are not explicitly stated.
-    # The project historically used conservative prompts; this flag intentionally relaxes that.
-    llm_allucinate = _mode_get_nested("llm.allucinate")
-    if llm_allucinate is None:
-        # Accept common misspelling/alias
-        llm_allucinate = _mode_get_nested("llm.hallucinate")
-    if llm_allucinate is None:
-        os.environ.pop("DEALS_LLM_ALLUCINATE", None)
-    else:
-        os.environ["DEALS_LLM_ALLUCINATE"] = "true" if bool(llm_allucinate) else "false"
 
     # -------------------------
     # Deterministic (no-LLM) fills
@@ -463,7 +308,7 @@ def _setup_logging() -> None:
 
 
 def cmd_pipeline(args: argparse.Namespace) -> None:
-    """Ejecutar el pipeline de deals para un modo concreto."""
+    """Run the deals pipeline for a specific mode."""
 
     from services.deals_pipeline import run_deals_pipeline
 
@@ -478,15 +323,15 @@ def cmd_pipeline(args: argparse.Namespace) -> None:
     else:
         persist = bool(mode_cfg.get("persist", True))
 
-    # Si el modo declara 'amadeus' en scraping_sources, rellenar primero
-    # los gaps de Amadeus según patterns.json y los parámetros amadeus_*
-    # del propio modo. De este modo, para el usuario basta con añadir
-    # "amadeus" a la lista de fuentes en run_config.
-    _run_amadeus_for_mode_if_enabled(mode_name, mode_cfg, persist=persist)
+    # If the mode declares 'duffel' in scraping_sources, fill Duffel
+    # gaps first according to patterns.json and the duffel_* parameters
+    # of the mode itself. This way, the user only needs to add "duffel"
+    # to the sources list in run_config.
+    _run_duffel_for_mode_if_enabled(mode_name, mode_cfg, persist=persist)
 
     limit = int(args.limit or mode_cfg.get("pipeline_limit") or mode_cfg.get("limit") or 40)
 
-    # Permitir override de fuentes desde CLI (travel-dealz,secretflying).
+    # Allow overriding sources from CLI (travel-dealz,secretflying).
     sources = None
     if getattr(args, "sources", None):
         raw_sources = [s.strip().lower() for s in str(args.sources).split(",") if s.strip()]
@@ -499,43 +344,42 @@ def cmd_pipeline(args: argparse.Namespace) -> None:
         if mapped:
             sources = mapped
 
-    print(f"[run] Ejecutando pipeline en modo='{mode_name}' con limit={limit}...")
+    print(f"[run] Running pipeline in mode='{mode_name}' with limit={limit}...")
     if sources:
-        print(f"[run] Fuentes overrideadas desde CLI: {sorted(sources)}")
+        print(f"[run] Sources overridden from CLI: {sorted(sources)}")
 
     result = run_deals_pipeline(
         limit=limit,
         persist=persist,
         max_items_html=limit,
-        enrich=None,
         sources=sources,
     )
 
-    print(f"[run] Deals generados: {result.get('count')} | fuentes: {result.get('sources_enabled')}")
+    print(f"[run] Deals generated: {result.get('count')} | sources: {result.get('sources_enabled')}")
     deals = (result.get("deals") or [])[:5]
     for d in deals:
         print(f" - {d.get('score')} | {d.get('price')} {d.get('currency')} | {d.get('title')}")
 
 
-def cmd_amadeus_refresh(args: argparse.Namespace) -> None:
-    """Rellenar gaps de Amadeus basados en patterns.json según el modo."""
+def cmd_duffel_refresh(args: argparse.Namespace) -> None:
+    """Fill Duffel gaps based on patterns.json according to the mode."""
 
     cfg = _load_run_config()
     mode_name = args.mode or "swiss_newsletter"
     mode_cfg = _get_mode(cfg, mode_name)
 
-    amadeus_cfg = mode_cfg.get("amadeus") if isinstance(mode_cfg.get("amadeus"), dict) else {}
+    duffel_cfg = mode_cfg.get("duffel") if isinstance(mode_cfg.get("duffel"), dict) else {}
 
-    raw_origin = args.origin or mode_cfg.get("amadeus_origin") or amadeus_cfg.get("origins") or "ZRH"
-    origins = _parse_amadeus_origins(raw_origin)
-    months_ahead = args.months_ahead or mode_cfg.get("amadeus_months_ahead") or amadeus_cfg.get("months") or 4
-    max_calls = args.max_calls or mode_cfg.get("amadeus_max_calls") or amadeus_cfg.get("calls") or 72
+    raw_origin = args.origin or mode_cfg.get("duffel_origin") or duffel_cfg.get("origins") or "ZRH"
+    origins = _parse_duffel_origins(raw_origin)
+    months_ahead = args.months_ahead or mode_cfg.get("duffel_months_ahead") or duffel_cfg.get("months") or 4
+    max_calls = args.max_calls or mode_cfg.get("duffel_max_calls") or duffel_cfg.get("calls") or 72
 
     for origin in origins:
         cmd = [
             sys.executable,
             "-m",
-            "backend.scripts.fill_amadeus_gaps_from_patterns_v2",
+            "backend.scripts.fill_duffel_gaps_from_patterns",
             "--origin",
             str(origin),
             "--months-ahead",
@@ -544,17 +388,17 @@ def cmd_amadeus_refresh(args: argparse.Namespace) -> None:
             str(max_calls),
         ]
 
-        print("[run] Ejecutando:", " ".join(cmd))
+        print("[run] Running:", " ".join(cmd))
         subprocess.run(cmd, check=False)
 
 
 def cmd_html_snippet(args: argparse.Namespace) -> None:
-    """Generar un snippet HTML de deals usando el modo seleccionado.
+    """Generate an HTML deals snippet using the selected mode.
 
-    Este comando aplica primero la configuración del modo (scrapers,
-    ORIGIN_IATA_FILTER, etc.) y luego delega en
-    `backend.scripts.generate_deals_html` para escribir el snippet en
-    disco.
+    This command first applies the mode configuration (scrapers,
+    ORIGIN_IATA_FILTER, etc.) and then delegates to
+    `backend.scripts.generate_deals_html` to write the snippet to
+    disk.
     """
 
     cfg = _load_run_config()
@@ -581,16 +425,16 @@ def cmd_html_snippet(args: argparse.Namespace) -> None:
     if args.no_persist:
         cmd.append("--no-persist")
 
-    print("[run] Ejecutando:", " ".join(cmd))
+    print("[run] Running:", " ".join(cmd))
     subprocess.run(cmd, check=False)
 
 
 def cmd_newsletter_html(args: argparse.Namespace) -> None:
-    """Generar el HTML completo del newsletter para un modo.
+    """Generate the complete newsletter HTML for a mode.
 
-    Aplica primero la configuración del modo seleccionado y luego
-    delega en `backend.scripts.generate_newsletter_html` para generar el
-    HTML completo basado en la plantilla de newsletter.
+    First applies the selected mode configuration and then delegates
+    to `backend.scripts.generate_newsletter_html` to generate the
+    complete HTML based on the newsletter template.
     """
 
     cfg = _load_run_config()
@@ -617,15 +461,15 @@ def cmd_newsletter_html(args: argparse.Namespace) -> None:
     if args.no_persist:
         cmd.append("--no-persist")
 
-    print("[run] Ejecutando:", " ".join(cmd))
+    print("[run] Running:", " ".join(cmd))
     subprocess.run(cmd, check=False)
 
 
 def cmd_cleanup_deal(args: argparse.Namespace) -> None:
-    """Wrapper para limpiar un deal "muerto" (URL que ya no existe).
+    """Wrapper to clean up a "dead" deal (URL that no longer exists).
 
-    Delegamos en backend.scripts.cleanup_dead_deal para que borre las
-    filas correspondientes en deals_* y source_articles.
+    Delegates to backend.scripts.cleanup_dead_deal to delete the
+    corresponding rows in deals_* and source_articles.
     """
 
     cmd = [
@@ -641,15 +485,15 @@ def cmd_cleanup_deal(args: argparse.Namespace) -> None:
     if args.clean:
         cmd.extend(["--clean", str(args.clean)])
 
-    print("[run] Ejecutando:", " ".join(cmd))
+    print("[run] Running:", " ".join(cmd))
     subprocess.run(cmd, check=False)
 
 
 def cmd_html_from_db(args: argparse.Namespace) -> None:
-    """Generar snippet HTML directamente desde Supabase (tabla deals).
+    """Generate HTML snippet directly from Supabase (deals table).
 
-    Esto es útil cuando el scraping en vivo devuelve 0 deals pero ya
-    tienes un histórico en la tabla agregada deals.
+    This is useful when live scraping returns 0 deals but you already
+    have historical data in the aggregated deals table.
     """
 
     cmd = [
@@ -664,24 +508,24 @@ def cmd_html_from_db(args: argparse.Namespace) -> None:
         str(args.output),
     ]
 
-    print("[run] Ejecutando:", " ".join(cmd))
+    print("[run] Running:", " ".join(cmd))
     subprocess.run(cmd, check=False)
 
 
-def cmd_amadeus_html(args: argparse.Namespace) -> None:
-        """Lanzar Amadeus (según el modo) y generar un snippet desde deals.
+def cmd_duffel_html(args: argparse.Namespace) -> None:
+        """Launch Duffel (according to the mode) and generate a snippet from deals.
 
-        Flujo:
-        - Leer configuración del modo (amadeus_origin, amadeus_months_ahead,
-            amadeus_max_calls).
-        - Ejecutar fill_amadeus_gaps_from_patterns_v2 para rellenar deals con
-            filas de Amadeus (source="amadeus").
-        - Generar un snippet HTML desde la tabla deals usando
+        Flow:
+        - Read mode configuration (duffel_origin, duffel_months_ahead,
+            duffel_max_calls).
+        - Run fill_duffel_gaps_from_patterns to fill deals with
+            Duffel rows (source="duffel").
+        - Generate an HTML snippet from the deals table using
             generate_deals_html_from_db.
         """
 
         cfg = _load_run_config()
-        mode_name = args.mode or "amadeus_test"
+        mode_name = args.mode or "duffel_test"
         mode_cfg = _get_mode(cfg, mode_name)
 
         _apply_mode_env(mode_cfg)
@@ -694,21 +538,21 @@ def cmd_amadeus_html(args: argparse.Namespace) -> None:
         else:
             persist = bool(mode_cfg.get("persist", True))
 
-        raw_origin = args.origin or mode_cfg.get("amadeus_origin") or "ZRH"
-        origins = _parse_amadeus_origins(raw_origin)
-        months_ahead = args.months_ahead or mode_cfg.get("amadeus_months_ahead") or 4
-        max_calls = args.max_calls or mode_cfg.get("amadeus_max_calls") or 10
+        raw_origin = args.origin or mode_cfg.get("duffel_origin") or "ZRH"
+        origins = _parse_duffel_origins(raw_origin)
+        months_ahead = args.months_ahead or mode_cfg.get("duffel_months_ahead") or 4
+        max_calls = args.max_calls or mode_cfg.get("duffel_max_calls") or 10
 
-        # 1) Rellenar deals con filas de Amadeus para cada origen
+        # 1) Fill deals with Duffel rows for each origin
         # In no-persist mode we still want a preview snippet, so we ask the
         # script to dump computed rows to JSON.
         safe_mode = "".join(ch if ch.isalnum() else "_" for ch in str(mode_name))
-        preview_json = f"backend/snippets/amadeus_preview_{safe_mode}.json"
+        preview_json = f"backend/snippets/duffel_preview_{safe_mode}.json"
         for origin in origins:
             cmd_fill = [
                 sys.executable,
                 "-m",
-                "backend.scripts.fill_amadeus_gaps_from_patterns_v2",
+                "backend.scripts.fill_duffel_gaps_from_patterns",
                 "--origin",
                 str(origin),
                 "--months-ahead",
@@ -722,12 +566,12 @@ def cmd_amadeus_html(args: argparse.Namespace) -> None:
             # Always dump JSON so the subsequent HTML step can be deterministic.
             cmd_fill.extend(["--output-json", preview_json])
 
-            print("[run] Ejecutando (Amadeus fill):", " ".join(cmd_fill))
+            print("[run] Running (Duffel fill):", " ".join(cmd_fill))
             subprocess.run(cmd_fill, check=False)
 
-        # 2) Generar snippet HTML desde deals
+        # 2) Generate HTML snippet from deals
         limit = int(args.limit or mode_cfg.get("pipeline_limit") or 10)
-        output_rel = args.output or "snippets/deal_amadeus.html"
+        output_rel = args.output or "snippets/deal_duffel.html"
 
         cmd_snip = [
             sys.executable,
@@ -739,15 +583,15 @@ def cmd_amadeus_html(args: argparse.Namespace) -> None:
             output_rel,
         ]
 
-        # Only show Amadeus rows in this command.
-        cmd_snip.extend(["--source", "amadeus"])
+        # Only show Duffel rows in this command.
+        cmd_snip.extend(["--source", "duffel"])
 
         if not persist:
             cmd_snip.extend(["--input-json", preview_json])
         else:
             cmd_snip.extend(["--table", "deals"])
 
-        print("[run] Ejecutando (Amadeus snippet):", " ".join(cmd_snip))
+        print("[run] Running (Duffel snippet):", " ".join(cmd_snip))
         subprocess.run(cmd_snip, check=False)
 
 
@@ -757,8 +601,8 @@ def cmd_demo_html(args: argparse.Namespace) -> None:
     Outputs (under backend/snippets/demo/):
       - deal_traveldealz.html
       - newsletter_traveldealz.html
-      - deal_amadeus.html
-      - newsletter_amadeus.html
+      - deal_duffel.html
+      - newsletter_duffel.html
 
     This command is designed to avoid creating extra artifacts and to work
     without persisting anything to Supabase.
@@ -772,14 +616,14 @@ def cmd_demo_html(args: argparse.Namespace) -> None:
     mode_cfg = _get_mode(cfg, mode_name)
     _apply_mode_env(mode_cfg)
 
-    # Ensure Amadeus demo rows always show baggage (assumed) even if Amadeus omits it.
-    os.environ.setdefault("AMADEUS_ASSUME_BAGGAGE", "true")
+    # Ensure Duffel demo rows always show baggage (assumed) even if Duffel omits it.
+    os.environ.setdefault("DUFFEL_ASSUME_BAGGAGE", "true")
 
     demo_dir = BACKEND_ROOT / "snippets" / "demo"
     demo_dir.mkdir(parents=True, exist_ok=True)
 
     td_limit = int(getattr(args, "traveldealz_limit", None) or 3)
-    ama_limit = int(getattr(args, "amadeus_limit", None) or 3)
+    duffel_limit = int(getattr(args, "duffel_limit", None) or 3)
     max_calls = int(getattr(args, "max_calls", None) or 1)
 
     # 1) Travel-Dealz: run pipeline in-memory only, travel-dealz source only
@@ -787,7 +631,6 @@ def cmd_demo_html(args: argparse.Namespace) -> None:
         limit=td_limit,
         persist=False,
         max_items_html=min(td_limit, 10),
-        enrich=None,
         sources={"travel-dealz"},
     )
     td_deals_all = td_result.get("deals") or []
@@ -802,7 +645,7 @@ def cmd_demo_html(args: argparse.Namespace) -> None:
             rsp = (
                 _client.table("deals")
                 .select(
-                    "title,price,currency,link,booking_url,image,source,origin,destination,origin_iata,destination_iata,airline,cabin_class,cabin_baggage,aircraft,miles,date_out,date_in,date_range,baggage_included,baggage_pieces_included,baggage_allowance_kg,baggage_allowance_display,llm_enriched_fields"
+                    "title,price,currency,link,booking_url,image,source,origin,destination,origin_iata,destination_iata,airline,cabin_class,aircraft,miles,date_out,date_in,stops,baggage_included,baggage_pieces_included,baggage_allowance_kg,flight_duration_minutes,flight_duration_display,skyscanner_url,scoring"
                 )
                 .ilike("source", "%travel%dealz%")
                 .order("id", desc=True)
@@ -829,17 +672,17 @@ def cmd_demo_html(args: argparse.Namespace) -> None:
             pass
         print("[run] demo-html: no Travel-Dealz deals produced (no files written)")
 
-    # 2) Amadeus: run gap filler in dry-run and render from the produced JSON
-    raw_origin = args.origin or (mode_cfg.get("amadeus_origin") or "ZRH")
-    origins = _parse_amadeus_origins(raw_origin)
-    months_ahead = int(getattr(args, "months_ahead", None) or (mode_cfg.get("amadeus_months_ahead") or 4))
+    # 2) Duffel: run gap filler in dry-run and render from the produced JSON
+    raw_origin = args.origin or (mode_cfg.get("duffel_origin") or "ZRH")
+    origins = _parse_duffel_origins(raw_origin)
+    months_ahead = int(getattr(args, "months_ahead", None) or (mode_cfg.get("duffel_months_ahead") or 4))
 
-    preview_json = str(demo_dir / "amadeus_preview.json")
+    preview_json = str(demo_dir / "duffel_preview.json")
     for origin in origins[:1]:
         cmd_fill = [
             sys.executable,
             "-m",
-            "backend.scripts.fill_amadeus_gaps_from_patterns_v2",
+            "backend.scripts.fill_duffel_gaps_from_patterns",
             "--origin",
             str(origin),
             "--months-ahead",
@@ -850,12 +693,12 @@ def cmd_demo_html(args: argparse.Namespace) -> None:
             "--output-json",
             preview_json,
         ]
-        print("[run] demo-html executing (Amadeus dry-run):", " ".join(cmd_fill))
+        print("[run] demo-html executing (Duffel dry-run):", " ".join(cmd_fill))
         subprocess.run(cmd_fill, check=False)
         break
 
-    ama_deal_path = demo_dir / "deal_amadeus.html"
-    ama_news_path = demo_dir / "newsletter_amadeus.html"
+    duffel_deal_path = demo_dir / "deal_duffel.html"
+    duffel_news_path = demo_dir / "newsletter_duffel.html"
     try:
         import json as _json
 
@@ -864,40 +707,22 @@ def cmd_demo_html(args: argparse.Namespace) -> None:
     except Exception:
         rows = []
 
-    # Ensure the newsletter template shows program miles display when present.
-    ama_deals: list[dict[str, Any]] = []
-    for r in rows[: ama_limit]:
-        if not isinstance(r, dict):
-            continue
-        llm_fields = r.get("llm_enriched_fields")
-        if isinstance(llm_fields, dict):
-            mpd = llm_fields.get("miles_programs_display")
-            if mpd and r.get("miles") not in (None, ""):
-                # Prefer the richer display if it exists (newsletter renderer will display strings),
-                # but keep only one valid program for the airline.
-                try:
-                    from scoring.miles_utils import filter_miles_programs_display
+    duffel_deals: list[dict[str, Any]] = [r for r in rows[: duffel_limit] if isinstance(r, dict)]
 
-                    airline_name = r.get("airline") or (llm_fields.get("airline_name") if isinstance(llm_fields, dict) else None)
-                    r["miles"] = filter_miles_programs_display(str(mpd), str(airline_name) if airline_name else None) or mpd
-                except Exception:
-                    r["miles"] = mpd
-        ama_deals.append(r)
-
-    if ama_deals:
-        ama_rows = [deal_to_newsletter_row(d) for d in ama_deals[: ama_limit]]
-        ama_deal_path.write_text(ama_rows[0], encoding="utf-8")
-        ama_news_path.write_text(build_full_html(ama_rows), encoding="utf-8")
-        print(f"[run] demo-html wrote: {ama_deal_path} and {ama_news_path} (n={len(ama_rows)})")
+    if duffel_deals:
+        duffel_rows = [deal_to_newsletter_row(d) for d in duffel_deals[: duffel_limit]]
+        duffel_deal_path.write_text(duffel_rows[0], encoding="utf-8")
+        duffel_news_path.write_text(build_full_html(duffel_rows), encoding="utf-8")
+        print(f"[run] demo-html wrote: {duffel_deal_path} and {duffel_news_path} (n={len(duffel_rows)})")
     else:
         try:
-            if ama_deal_path.exists():
-                ama_deal_path.unlink()
-            if ama_news_path.exists():
-                ama_news_path.unlink()
+            if duffel_deal_path.exists():
+                duffel_deal_path.unlink()
+            if duffel_news_path.exists():
+                duffel_news_path.unlink()
         except Exception:
             pass
-        print("[run] demo-html: no Amadeus deals produced (no files written)")
+        print("[run] demo-html: no Duffel deals produced (no files written)")
 
     # Keep demo folder clean: remove intermediate JSON.
     try:
@@ -909,11 +734,11 @@ def cmd_demo_html(args: argparse.Namespace) -> None:
 
 
 def cmd_scan_dead(args: argparse.Namespace) -> None:
-    """Escanear tablas de deals en Supabase en busca de URLs muertas.
+    """Scan deals tables in Supabase for dead URLs.
 
-    Wrapper cómodo sobre backend.scripts.cleanup_dead_deals_auto en modo
-    "repaso manual": por defecto NO borra nada, solo imprime qué URLs
-    parecen muertas (status >= 400 o error de red).
+    Convenient wrapper around backend.scripts.cleanup_dead_deals_auto in
+    "manual review" mode: by default does NOT delete anything, only prints
+    which URLs appear to be dead (status >= 400 or network error).
     """
 
     table = str(args.table)
@@ -929,27 +754,27 @@ def cmd_scan_dead(args: argparse.Namespace) -> None:
         str(limit),
     ]
 
-    # Solo si se pasa --apply explícitamente se añaden los borrados reales.
+    # Only if --apply is passed explicitly are the actual deletions added.
     if args.apply:
         cmd.append("--apply")
 
-    print("[run] Ejecutando escaneo de URLs muertas:", " ".join(cmd))
+    print("[run] Running dead URL scan:", " ".join(cmd))
     subprocess.run(cmd, check=False)
 
 
 def _cascade_delete_for_source(source_key: str) -> None:
-    """Borrar en cascada filas relacionadas en deals y source_articles.
+    """Cascade-delete related rows in deals and source_articles.
 
-    Pensado para resets masivos por fuente (travel-dealz, secretflying, ...)
-    cuando se vacía la tabla específica (deals_traveldealz, deals_secretflying).
+    Intended for bulk resets by source (travel-dealz, secretflying, ...)
+    when the specific table (deals_traveldealz, deals_secretflying) is emptied.
     """
 
     if not _client:
-        print(f"[run] Supabase no configurado; omitiendo borrado en cascada para source={source_key}.")
+        print(f"[run] Supabase not configured; skipping cascade delete for source={source_key}.")
         return
 
     try:
-        # 1) Borrar filas en deals asociadas a esta fuente.
+        # 1) Delete rows in deals associated with this source.
         try:
             rsp = _client.table("deals").select("id,source").execute()
             rows = getattr(rsp, "data", []) or []
@@ -963,12 +788,12 @@ def _cascade_delete_for_source(source_key: str) -> None:
             if ids:
                 _client.table("deals").delete().in_("id", ids).execute()
                 print(
-                    f"[run] Borradas {len(ids)} filas de deals para source~{source_key}.",
+                    f"[run] Deleted {len(ids)} rows from deals for source~{source_key}.",
                 )
         except Exception as e:
-            print(f"[run] Error borrando de deals para source={source_key}: {e!r}")
+            print(f"[run] Error deleting from deals for source={source_key}: {e!r}")
 
-        # 2) Borrar filas en source_articles asociadas a esta fuente.
+        # 2) Delete rows in source_articles associated with this source.
         try:
             rsp_sa = _client.table("source_articles").select("id,source").execute()
             rows_sa = getattr(rsp_sa, "data", []) or []
@@ -982,19 +807,19 @@ def _cascade_delete_for_source(source_key: str) -> None:
             if ids_sa:
                 _client.table("source_articles").delete().in_("id", ids_sa).execute()
                 print(
-                    f"[run] Borradas {len(ids_sa)} filas de source_articles para source={source_key}.",
+                    f"[run] Deleted {len(ids_sa)} rows from source_articles for source={source_key}.",
                 )
         except Exception as e:
-            print(f"[run] Error borrando de source_articles para source={source_key}: {e!r}")
-    except Exception as e:  # pragma: no cover - error inesperado
-        print(f"[run] Error inesperado en borrado en cascada para source={source_key}: {e!r}")
+            print(f"[run] Error deleting from source_articles for source={source_key}: {e!r}")
+    except Exception as e:  # pragma: no cover - unexpected error
+        print(f"[run] Unexpected error in cascade delete for source={source_key}: {e!r}")
 
 
-def _run_amadeus_for_mode_if_enabled(mode_name: str, mode_cfg: Dict[str, Any], persist: bool = True) -> Dict[str, Any]:
-    """Run Amadeus gap-filling for a mode if it is enabled.
+def _run_duffel_for_mode_if_enabled(mode_name: str, mode_cfg: Dict[str, Any], persist: bool = True) -> Dict[str, Any]:
+    """Run Duffel gap-filling for a mode if it is enabled.
 
-    Activation is driven by Amadeus-specific parameters (for example,
-    amadeus_max_calls > 0) instead of relying on scraping_sources.
+    Activation is driven by Duffel-specific parameters (for example,
+    duffel_max_calls > 0) instead of relying on scraping_sources.
 
     The ``persist`` flag controls whether the underlying script is allowed
     to write rows into Supabase. When ``persist`` is False, the script is
@@ -1003,13 +828,13 @@ def _run_amadeus_for_mode_if_enabled(mode_name: str, mode_cfg: Dict[str, Any], p
     modes where we want to avoid touching Supabase at all.
     """
 
-    # Support both legacy top-level keys (amadeus_*) and nested config:
-    #   "amadeus": {"origins": ["ZRH"], "months": 4, "calls": 3}
-    amadeus_cfg = mode_cfg.get("amadeus") if isinstance(mode_cfg.get("amadeus"), dict) else {}
+    # Support both legacy top-level keys (duffel_*) and nested config:
+    #   "duffel": {"origins": ["ZRH"], "months": 4, "calls": 3}
+    duffel_cfg = mode_cfg.get("duffel") if isinstance(mode_cfg.get("duffel"), dict) else {}
 
-    max_calls_cfg = mode_cfg.get("amadeus_max_calls")
+    max_calls_cfg = mode_cfg.get("duffel_max_calls")
     if max_calls_cfg is None:
-        max_calls_cfg = amadeus_cfg.get("calls")
+        max_calls_cfg = duffel_cfg.get("calls")
 
     try:
         if max_calls_cfg is None or int(max_calls_cfg) <= 0:
@@ -1017,15 +842,15 @@ def _run_amadeus_for_mode_if_enabled(mode_name: str, mode_cfg: Dict[str, Any], p
     except Exception:
         return {"ran": False}
 
-    raw_origin = mode_cfg.get("amadeus_origin")
+    raw_origin = mode_cfg.get("duffel_origin")
     if raw_origin in (None, ""):
-        raw_origin = amadeus_cfg.get("origins")
+        raw_origin = duffel_cfg.get("origins")
     raw_origin = raw_origin or "ZRH"
-    origins = _parse_amadeus_origins(raw_origin)
+    origins = _parse_duffel_origins(raw_origin)
 
-    months_ahead = mode_cfg.get("amadeus_months_ahead")
+    months_ahead = mode_cfg.get("duffel_months_ahead")
     if months_ahead in (None, ""):
-        months_ahead = amadeus_cfg.get("months")
+        months_ahead = duffel_cfg.get("months")
     months_ahead = months_ahead or 4
 
     try:
@@ -1046,7 +871,7 @@ def _run_amadeus_for_mode_if_enabled(mode_name: str, mode_cfg: Dict[str, Any], p
         cmd = [
             sys.executable,
             "-m",
-            "backend.scripts.fill_amadeus_gaps_from_patterns_v2",
+            "backend.scripts.fill_duffel_gaps_from_patterns",
             "--origin",
             str(origin),
             "--months-ahead",
@@ -1055,22 +880,22 @@ def _run_amadeus_for_mode_if_enabled(mode_name: str, mode_cfg: Dict[str, Any], p
             str(calls_for_origin),
         ]
 
-        # En modos de previsualización (persist=False) ejecutamos el script
-        # en modo dry-run para no escribir nada en Supabase.
+        # In preview modes (persist=False) we run the script in dry-run mode
+        # so nothing is written to Supabase.
         if not persist:
             cmd.append("--dry-run")
 
         print(
-            f"[run] Mode '{mode_name}' has Amadeus enabled; "
-            "running Amadeus refresh before the pipeline:",
+            f"[run] Mode '{mode_name}' has Duffel enabled; "
+            "running Duffel refresh before the pipeline:",
             " ".join(cmd),
         )
-        # Avoid hanging runs when Amadeus/network stalls.
+        # Avoid hanging runs when Duffel/network stalls.
         # Priority: per-mode run_config.json -> env var -> default.
         timeout_s: float
         timeout_raw = None
         if isinstance(mode_cfg, dict):
-            timeout_raw = mode_cfg.get("timeout_amadeus")
+            timeout_raw = mode_cfg.get("timeout_duffel")
 
         if timeout_raw not in (None, ""):
             try:
@@ -1079,7 +904,7 @@ def _run_amadeus_for_mode_if_enabled(mode_name: str, mode_cfg: Dict[str, Any], p
                 timeout_s = 120.0
         else:
             try:
-                timeout_s = float(os.getenv("AMADEUS_REFRESH_TIMEOUT_SECONDS", "120"))
+                timeout_s = float(os.getenv("DUFFEL_REFRESH_TIMEOUT_SECONDS", "120"))
             except Exception:
                 timeout_s = 120.0
 
@@ -1087,12 +912,12 @@ def _run_amadeus_for_mode_if_enabled(mode_name: str, mode_cfg: Dict[str, Any], p
             subprocess.run(cmd, check=False, timeout=timeout_s)
             ran_any = True
         except subprocess.TimeoutExpired:
-            print(f"[run] Amadeus refresh timed out after {timeout_s:.0f}s; continuing without waiting.")
+            print(f"[run] Duffel refresh timed out after {timeout_s:.0f}s; continuing without waiting.")
             ran_any = True
             timeout_count += 1
 
-        # Consumir presupuesto total (no per-origin). Si quieres repartirlo, ajusta
-        # amadeus_max_calls o la lista de orígenes.
+        # Consume total budget (not per-origin). To distribute it, adjust
+        # duffel_max_calls or the list of origins.
         remaining_calls -= calls_for_origin
 
     elapsed_s = time.perf_counter() - started
@@ -1125,7 +950,7 @@ def cmd_deals_html(args: argparse.Namespace) -> None:
     from scoring.html_output import deal_to_newsletter_row, build_full_html
 
     cfg = _load_run_config()
-    mode_name = args.mode or "swiss_newsletter"
+    mode_name = args.mode or cfg.get("default_mode") or "full-no-llm"
     mode_cfg = _get_mode(cfg, mode_name)
 
     _apply_mode_env(mode_cfg)
@@ -1135,14 +960,14 @@ def cmd_deals_html(args: argparse.Namespace) -> None:
     else:
         persist = bool(mode_cfg.get("persist", True))
 
-    # Igual que en cmd_pipeline: si el modo incluye 'amadeus' como fuente,
-    # ejecutamos primero el refresco Amadeus basado en patterns.json para
-    # que los benchmarks/filas de Amadeus estén listos antes del pipeline.
-    _run_amadeus_for_mode_if_enabled(mode_name, mode_cfg, persist=persist)
+    # Same as in cmd_pipeline: if the mode includes 'duffel' as a source,
+    # we first run the Duffel refresh based on patterns.json so that
+    # Duffel benchmarks/rows are ready before the pipeline.
+    _run_duffel_for_mode_if_enabled(mode_name, mode_cfg, persist=persist)
 
     limit = int(args.limit or mode_cfg.get("pipeline_limit") or mode_cfg.get("limit") or 40)
 
-    # Override opcional de fuentes
+    # Optional sources override
     sources = None
     if getattr(args, "sources", None):
         raw_sources = [s.strip().lower() for s in str(args.sources).split(",") if s.strip()]
@@ -1155,26 +980,26 @@ def cmd_deals_html(args: argparse.Namespace) -> None:
         if mapped:
             sources = mapped
 
-    # Reset opcional de tablas de deals antes de ejecutar el pipeline.
-    # Permite elegir la fuente a vaciar: travel-dealz, secretflying,
-    # amadeus, deals-all o all.
+    # Optional reset of deals tables before running the pipeline.
+    # Allows choosing the source to clear: travel-dealz, secretflying,
+    # duffel, deals-all or all.
     reset_target = getattr(args, "reset_deals", None)
     if reset_target:
         if reset_target == "travel-dealz":
             tables = "deals"
-            # En el esquema actual, travel-dealz se almacena en la tabla
-            # agregada deals; también borramos las filas correspondientes en
+            # In the current schema, travel-dealz is stored in the aggregated
+            # deals table; we also delete the corresponding rows in
             # source_articles.
             _cascade_delete_for_source("travel-dealz")
         elif reset_target == "secretflying":
             tables = "deals"
             _cascade_delete_for_source("secretflying")
-        elif reset_target == "amadeus":
-            tables = "deals_amadeus"
+        elif reset_target == "duffel":
+            tables = "deals_duffel"
         elif reset_target == "deals-all":
             tables = "deals"
         else:  # "all"
-            tables = "deals,deals_amadeus"
+            tables = "deals,deals_duffel"
             _cascade_delete_for_source("travel-dealz")
             _cascade_delete_for_source("secretflying")
 
@@ -1186,14 +1011,14 @@ def cmd_deals_html(args: argparse.Namespace) -> None:
             tables,
             "--force",
         ]
-        print("[run] Ejecutando reset de tablas de deals:", " ".join(reset_cmd))
+        print("[run] Running deals table reset:", " ".join(reset_cmd))
         subprocess.run(reset_cmd, check=False)
 
-    # Limpieza opcional de URLs muertas antes de ejecutar el pipeline.
+    # Optional cleanup of dead URLs before running the pipeline.
     clean_dead = getattr(args, "clean_dead", None)
     if clean_dead:
-        # En el esquema actual todas las fuentes se almacenan en `deals`,
-        # así que siempre usamos esa tabla como base para la limpieza.
+        # In the current schema all sources are stored in `deals`,
+        # so we always use that table as the base for cleanup.
         table = "deals"
 
         clean_cmd = [
@@ -1206,7 +1031,7 @@ def cmd_deals_html(args: argparse.Namespace) -> None:
             str(getattr(args, "clean_limit", 200)),
             "--apply",
         ]
-        print("[run] Ejecutando limpieza de URLs muertas:", " ".join(clean_cmd))
+        print("[run] Running dead URL cleanup:", " ".join(clean_cmd))
         subprocess.run(clean_cmd, check=False)
 
     print(f"[run] Running deals-html in mode='{mode_name}' with limit={limit}...")
@@ -1218,7 +1043,6 @@ def cmd_deals_html(args: argparse.Namespace) -> None:
         persist=persist,
         # Render at most 10 items in the main HTML snippet for readability
         max_items_html=min(limit, 10),
-        enrich=None,
         sources=sources,
     )
 
@@ -1232,24 +1056,24 @@ def cmd_deals_html(args: argparse.Namespace) -> None:
         if result.get("persist_info"):
             print(f"[run] persist_info: {result.get('persist_info')}")
 
-    # Nota: ya no generamos el snippet legacy "deals.html" ni el
-    # fallback desde BD aquí, porque los snippets de ejemplo se basan
-    # en la plantilla de newsletter.
+    # Note: we no longer generate the legacy "deals.html" snippet or the
+    # DB fallback here, because the example snippets are based on the
+    # newsletter template.
     print(f"[run] Deals generated by pipeline: {count} | sources: {result.get('sources_enabled')}")
 
     # Per-source HTML outputs (deal_*.html + newsletter_*.html)
-    # Reglas:
-    # - No se crean archivos "vacíos" ni placeholders.
-    # - Si persist=True, se renderiza desde Supabase (deals reales + imagen).
-    # - Si persist=False, se renderiza desde el resultado del pipeline.
-    # - Si una fuente no fue solicitada por el modo, se eliminan sus archivos
-    #   si existen (evita confusión por artefactos de ejecuciones anteriores).
+    # Rules:
+    # - No "empty" files or placeholders are created.
+    # - If persist=True, rendered from Supabase (real deals + image).
+    # - If persist=False, rendered from the pipeline result.
+    # - If a source was not requested by the mode, its files are deleted
+    #   if they exist (avoids confusion from artifacts of previous runs).
     deals_list = result.get("deals") or []
 
     def _sources_requested_for_mode() -> set[str]:
         requested: set[str] = set()
 
-        # Prioridad: override de CLI (si existe)
+        # Priority: CLI override (if present)
         if sources:
             requested |= set(sources)
         else:
@@ -1272,28 +1096,28 @@ def cmd_deals_html(args: argparse.Namespace) -> None:
         except Exception:
             pass
 
-        # Amadeus sólo si el modo lo pide explícitamente y estamos persistiendo.
-        # En persist=False el refresco se ejecuta en dry-run, así que no hay
-        # deals en BD y no tiene sentido generar HTML.
-        amadeus_cfg = mode_cfg.get("amadeus") or {}
+        # Duffel only if the mode explicitly requests it and we are persisting.
+        # With persist=False the refresh runs in dry-run, so there are no
+        # deals in the DB and generating HTML makes no sense.
+        duffel_cfg = mode_cfg.get("duffel") or {}
         try:
-            amadeus_calls = int(amadeus_cfg.get("calls") or 0)
+            duffel_calls = int(duffel_cfg.get("calls") or 0)
         except Exception:
-            amadeus_calls = 0
-        if persist and amadeus_calls > 0:
-            requested.add("amadeus")
+            duffel_calls = 0
+        if persist and duffel_calls > 0:
+            requested.add("duffel")
 
         return requested
 
     snippet_filename = {
         "travel-dealz": "snippets/deal_traveldealz.html",
         "secretflying": "snippets/deal_secretflying.html",
-        "amadeus": "snippets/deal_amadeus.html",
+        "duffel": "snippets/deal_duffel.html",
     }
     newsletter_filename = {
         "travel-dealz": "snippets/newsletter_traveldealz.html",
         "secretflying": "snippets/newsletter_secretflying.html",
-        "amadeus": "snippets/newsletter_amadeus.html",
+        "duffel": "snippets/newsletter_duffel.html",
     }
 
     # Per-source snippet/newsletter size (how many deals to include)
@@ -1315,8 +1139,8 @@ def cmd_deals_html(args: argparse.Namespace) -> None:
         if not _client:
             return []
 
-        # En BD, `source` no está 100% normalizado (p.ej. "Travel-Dealz").
-        # Usamos ilike para matchear de forma robusta.
+        # In the DB, `source` is not 100% normalised (e.g. "Travel-Dealz").
+        # We use ilike to match robustly.
         if source_key == "travel-dealz":
             pattern = "%travel%dealz%"
         elif source_key == "secretflying":
@@ -1328,7 +1152,7 @@ def cmd_deals_html(args: argparse.Namespace) -> None:
             rsp = (
                 _client.table("deals")
                 .select(
-                    "title,price,currency,link,booking_url,image,source,origin,destination,origin_iata,destination_iata,airline,cabin_class,cabin_baggage,aircraft,miles,date_out,date_in,date_range,baggage_included,baggage_pieces_included,baggage_allowance_kg,baggage_allowance_display,llm_enriched_fields"
+                    "title,price,currency,link,booking_url,image,source,origin,destination,origin_iata,destination_iata,airline,cabin_class,aircraft,miles,date_out,date_in,stops,baggage_included,baggage_pieces_included,baggage_allowance_kg,flight_duration_minutes,flight_duration_display,skyscanner_url,scoring"
                 )
                 .ilike("source", pattern)
                 .order("id", desc=True)
@@ -1349,7 +1173,7 @@ def cmd_deals_html(args: argparse.Namespace) -> None:
             _delete_if_exists(nl_path)
             return
 
-        # Snippet: 1 deal (el más reciente)
+        # Snippet: 1 deal (the most recent)
         os.makedirs(os.path.dirname(snip_path), exist_ok=True)
         with open(snip_path, "w", encoding="utf-8") as f_snip:
             f_snip.write(deal_to_newsletter_row(deals_src[0]))
@@ -1363,27 +1187,27 @@ def cmd_deals_html(args: argparse.Namespace) -> None:
         print(f"[run] Wrote HTML outputs for {source_key}: {snip_path}, {nl_path} (n={min(len(deals_src), per_source_max)})")
 
     requested_sources = _sources_requested_for_mode()
-    known_sources = {"travel-dealz", "secretflying", "amadeus"}
+    known_sources = {"travel-dealz", "secretflying", "duffel"}
 
-    # Limpieza: si una fuente NO fue solicitada, eliminamos sus archivos.
+    # Cleanup: if a source was NOT requested, delete its files.
     for s in sorted(known_sources - requested_sources):
         _delete_if_exists(BACKEND_ROOT / snippet_filename[s])
         _delete_if_exists(BACKEND_ROOT / newsletter_filename[s])
 
-    # Render: preferimos siempre Supabase (si está configurado) para que
-    # las newsletters muestren hasta 10 deals existentes y no dependan de
-    # la última ejecución. Esto es solo lectura y NO viola persist=False.
+    # Render: we always prefer Supabase (if configured) so that
+    # newsletters show up to 10 existing deals and do not depend on the
+    # last run. This is read-only and does NOT violate persist=False.
     if _client:
         for s in sorted(requested_sources):
             deals_src = _fetch_deals_from_supabase(s, limit_rows=per_source_max)
             _write_source_outputs(s, deals_src)
     else:
-        # Agrupar deals del pipeline por fuente (normalización simple).
-        by_source: dict[str, list[dict[str, Any]]] = {"travel-dealz": [], "secretflying": [], "amadeus": []}
+        # Group pipeline deals by source (simple normalisation).
+        by_source: dict[str, list[dict[str, Any]]] = {"travel-dealz": [], "secretflying": [], "duffel": []}
         for d in deals_list:
             src_label = str(d.get("source") or "").lower()
-            if "amadeus" in src_label:
-                by_source["amadeus"].append(d)
+            if "duffel" in src_label or "amadeus" in src_label:
+                by_source["duffel"].append(d)
             elif "secret" in src_label and "flying" in src_label:
                 by_source["secretflying"].append(d)
             elif "travel" in src_label and "deal" in src_label:
@@ -1394,11 +1218,11 @@ def cmd_deals_html(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Launcher unificado para snapcore backend")
+    parser = argparse.ArgumentParser(description="Unified launcher for snapcore backend")
     _setup_logging()
-    # Si no se pasa ningún subcomando, leemos el comando/modo por defecto
-    # de run_config.json (default_command/default_mode) para que
-    # `python -m backend.scripts.run` se controle solo con config.
+    # If no subcommand is passed, read the default command/mode from
+    # run_config.json (default_command/default_mode) so that
+    # `python -m backend.scripts.run` is controlled solely by config.
     if argv is None:
         argv = sys.argv[1:]
     if not argv:
@@ -1412,8 +1236,8 @@ def main(argv: list[str] | None = None) -> None:
 
         argv = [default_cmd]
         if default_mode:
-            # Solo añadimos --mode si el subcomando lo soporta; si no, se
-            # ignorará en el parseo.
+            # Only add --mode if the subcommand supports it; otherwise it
+            # will be ignored during parsing.
             argv.extend(["--mode", str(default_mode)])
 
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1447,261 +1271,260 @@ def main(argv: list[str] | None = None) -> None:
     )
     p_pipeline.set_defaults(func=cmd_pipeline)
 
-    # amadeus-refresh
-    p_ama = sub.add_parser("amadeus-refresh", help="Rellenar gaps Amadeus según patterns.json y modo")
-    p_ama.add_argument("--mode", help="Nombre del modo definido en run_config.json", default="swiss_newsletter")
-    p_ama.add_argument("--origin", help="Override del origen IATA (por defecto del modo)")
-    p_ama.add_argument("--months-ahead", type=int, help="Meses hacia adelante (override)")
-    p_ama.add_argument("--max-calls", type=int, help="Máximo de llamadas a Amadeus (override)")
-    p_ama.set_defaults(func=cmd_amadeus_refresh)
+    # duffel-refresh
+    p_duf = sub.add_parser("duffel-refresh", help="Fill Duffel gaps according to patterns.json and the mode")
+    p_duf.add_argument("--mode", help="Mode name defined in run_config.json", default="swiss_newsletter")
+    p_duf.add_argument("--origin", help="Override the IATA origin (default from the mode)")
+    p_duf.add_argument("--months-ahead", type=int, help="Months ahead (override)")
+    p_duf.add_argument("--max-calls", type=int, help="Maximum number of Duffel calls (override)")
+    p_duf.set_defaults(func=cmd_duffel_refresh)
 
     # html-snippet
     p_html = sub.add_parser(
         "html-snippet",
         help=(
-            "Generar snippet HTML de deals para un modo (usa generate_deals_html "
-            "bajo el capó)"
+            "Generate a deals HTML snippet for a mode (uses generate_deals_html "
+            "under the hood)"
         ),
     )
-    p_html.add_argument("--mode", help="Nombre del modo definido en run_config.json", default="swiss_newsletter")
-    p_html.add_argument("--limit", help="Override del límite de deals a renderizar")
-    p_html.add_argument("--output", help="Ruta de salida relativa (desde backend/) para el HTML")
-    p_html.add_argument("--persist", action="store_true", help="Forzar persistencia en Supabase")
-    p_html.add_argument("--no-persist", action="store_true", help="Forzar no persistir aunque el modo lo habilite")
+    p_html.add_argument("--mode", help="Mode name defined in run_config.json", default="swiss_newsletter")
+    p_html.add_argument("--limit", help="Override the deals render limit")
+    p_html.add_argument("--output", help="Relative output path (from backend/) for the HTML")
+    p_html.add_argument("--persist", action="store_true", help="Force persistence to Supabase")
+    p_html.add_argument("--no-persist", action="store_true", help="Force no persistence even if the mode enables it")
     p_html.set_defaults(func=cmd_html_snippet)
 
     # newsletter-html
     p_nl = sub.add_parser(
         "newsletter-html",
         help=(
-            "Generar el HTML completo del newsletter para un modo "
-            "(usa generate_newsletter_html bajo el capó)"
+            "Generate the complete newsletter HTML for a mode "
+            "(uses generate_newsletter_html under the hood)"
         ),
     )
-    p_nl.add_argument("--mode", help="Nombre del modo definido en run_config.json", default="swiss_newsletter")
-    p_nl.add_argument("--limit", help="Override del límite de deals a incluir en el newsletter")
-    p_nl.add_argument("--output", help="Ruta de salida relativa (desde backend/) para el HTML del newsletter")
-    p_nl.add_argument("--persist", action="store_true", help="Forzar persistencia en Supabase")
-    p_nl.add_argument("--no-persist", action="store_true", help="Forzar no persistir aunque el modo lo habilite")
+    p_nl.add_argument("--mode", help="Mode name defined in run_config.json", default="swiss_newsletter")
+    p_nl.add_argument("--limit", help="Override the deals limit to include in the newsletter")
+    p_nl.add_argument("--output", help="Relative output path (from backend/) for the newsletter HTML")
+    p_nl.add_argument("--persist", action="store_true", help="Force persistence to Supabase")
+    p_nl.add_argument("--no-persist", action="store_true", help="Force no persistence even if the mode enables it")
     p_nl.set_defaults(func=cmd_newsletter_html)
 
-    # cleanup-deal (limpieza por URL)
+    # cleanup-deal (cleanup by URL)
     p_clean = sub.add_parser(
         "cleanup-deal",
         help=(
-            "Limpiar un deal por URL (deals_traveldealz/deals_secretflying/"  # noqa: E501
-            "deals + source_articles). Usa backend.scripts.cleanup_dead_deal."
+            "Clean up a deal by URL (deals_traveldealz/deals_secretflying/"  # noqa: E501
+            "deals + source_articles). Uses backend.scripts.cleanup_dead_deal."
         ),
     )
-    p_clean.add_argument("--url", required=True, help="Article URL a limpiar")
+    p_clean.add_argument("--url", required=True, help="Article URL to clean up")
     p_clean.add_argument(
         "--clean",
         choices=["travel-dealz", "secretflying", "all"],
         default="all",
         help=(
-            "Limitar la limpieza a una fuente concreta (travel-dealz, "
-            "secretflying) o todas (all)."
+            "Restrict cleanup to a specific source (travel-dealz, "
+            "secretflying) or all (all)."
         ),
     )
     p_clean.add_argument(
         "--no-http-check",
         action="store_true",
-        help="No hacer petición HTTP previa; borrar sólo por URL match.",
+        help="Skip the HTTP request; delete only by URL match.",
     )
     p_clean.set_defaults(func=cmd_cleanup_deal)
 
-    # html-from-db (snippet desde Supabase)
+    # html-from-db (snippet from Supabase)
     p_html_db = sub.add_parser(
         "html-from-db",
         help=(
-            "Generar snippet HTML directamente desde Supabase (deals / deals_*) "
-            "usando generate_deals_html_from_db."
+            "Generate an HTML snippet directly from Supabase (deals / deals_*) "
+            "using generate_deals_html_from_db."
         ),
     )
     p_html_db.add_argument(
         "--table",
         default="deals",
-        help="Tabla de Supabase de la que leer deals (p.ej. deals)",
+        help="Supabase table to read deals from (e.g. deals)",
     )
     p_html_db.add_argument(
         "--limit",
         type=int,
         default=int(os.getenv("DEALS_DEFAULT_LIMIT", "20")),
-        help="Número máximo de deals a renderizar",
+        help="Maximum number of deals to render",
     )
     p_html_db.add_argument(
         "--output",
         default="snippets/deals_from_db.html",
-        help="Ruta de salida relativa (desde backend/) para el HTML",
+        help="Relative output path (from backend/) for the HTML",
     )
     p_html_db.set_defaults(func=cmd_html_from_db)
 
-    # amadeus-html (Amadeus -> deals -> snippet desde BD)
-    p_ama_html = sub.add_parser(
-        "amadeus-html",
+    # duffel-html (Duffel -> deals -> snippet from DB)
+    p_duf_html = sub.add_parser(
+        "duffel-html",
         help=(
-            "Lanzar Amadeus según el modo seleccionado y generar un snippet "
-            "HTML desde la tabla deals en una sola pasada."
+            "Launch Duffel according to the selected mode and generate an HTML snippet "
+            "from the deals table in a single pass."
         ),
     )
-    p_ama_html.add_argument(
+    p_duf_html.add_argument(
         "--mode",
-        help="Nombre del modo definido en run_config.json (por defecto amadeus_test)",
-        default="amadeus_test",
+        help="Mode name defined in run_config.json (default duffel_test)",
+        default="duffel_test",
     )
-    p_ama_html.add_argument(
+    p_duf_html.add_argument(
         "--limit",
-        help="Override del límite de deals a incluir en el snippet (por defecto pipeline_limit del modo)",
+        help="Override the deals limit to include in the snippet (default pipeline_limit of the mode)",
     )
-    p_ama_html.add_argument(
+    p_duf_html.add_argument(
         "--output",
-        help="Ruta de salida relativa (desde backend/) para el snippet (por defecto snippets/deals_amadeus.html)",
+        help="Relative output path (from backend/) for the snippet (default snippets/deals_duffel.html)",
     )
-    p_ama_html.add_argument(
+    p_duf_html.add_argument(
         "--origin",
-        help="Override del origen IATA para Amadeus (por defecto amadeus_origin del modo)",
+        help="Override the IATA origin for Duffel (default duffel_origin of the mode)",
     )
-    p_ama_html.add_argument(
+    p_duf_html.add_argument(
         "--months-ahead",
         type=int,
-        help="Override de meses hacia adelante para gaps de Amadeus (por defecto amadeus_months_ahead del modo)",
+        help="Override months ahead for Duffel gaps (default duffel_months_ahead of the mode)",
     )
-    p_ama_html.add_argument(
+    p_duf_html.add_argument(
         "--max-calls",
         type=int,
-        help="Override del máximo de llamadas a Amadeus (por defecto amadeus_max_calls del modo)",
+        help="Override the maximum number of Duffel calls (default duffel_max_calls of the mode)",
     )
-    p_ama_html.add_argument(
+    p_duf_html.add_argument(
         "--persist",
         action="store_true",
-        help="Forzar persistencia en Supabase (ignora el persist del modo)",
+        help="Force persistence to Supabase (ignores the mode's persist setting)",
     )
-    p_ama_html.add_argument(
+    p_duf_html.add_argument(
         "--no-persist",
         action="store_true",
-        help="Forzar no persistir aunque el modo lo habilite (preview)",
+        help="Force no persistence even if the mode enables it (preview)",
     )
-    p_ama_html.set_defaults(func=cmd_amadeus_html)
+    p_duf_html.set_defaults(func=cmd_duffel_html)
 
     # demo-html (reference outputs only)
     p_demo = sub.add_parser(
         "demo-html",
         help=(
-            "Generate ONLY reference HTML outputs (deal + newsletter) for Travel-Dealz and Amadeus "
+            "Generate ONLY reference HTML outputs (deal + newsletter) for Travel-Dealz and Duffel "
             "under backend/snippets/demo/ without persisting."
         ),
     )
     p_demo.add_argument("--mode", default="swiss_newsletter_llm_3", help="Mode name defined in run_config.json")
-    p_demo.add_argument("--origin", default=None, help="Override Amadeus origin IATA(s), e.g. ZRH or ZRH,BSL")
-    p_demo.add_argument("--months-ahead", type=int, default=None, help="Override Amadeus months-ahead window")
-    p_demo.add_argument("--max-calls", type=int, default=1, help="Max Amadeus calls for the demo")
+    p_demo.add_argument("--origin", default=None, help="Override Duffel origin IATA(s), e.g. ZRH or ZRH,BSL")
+    p_demo.add_argument("--months-ahead", type=int, default=None, help="Override Duffel months-ahead window")
+    p_demo.add_argument("--max-calls", type=int, default=1, help="Max Duffel calls for the demo")
     p_demo.add_argument("--traveldealz-limit", type=int, default=3, help="How many Travel-Dealz deals to include")
-    p_demo.add_argument("--amadeus-limit", type=int, default=3, help="How many Amadeus deals to include")
+    p_demo.add_argument("--duffel-limit", type=int, default=3, help="How many Duffel deals to include")
     p_demo.set_defaults(func=cmd_demo_html)
 
-    # scan-dead (repaso manual de URLs muertas)
+    # scan-dead (manual review of dead URLs)
     p_scan_dead = sub.add_parser(
         "scan-dead",
         help=(
-            "Escanear la tabla agregada de deals en Supabase en busca de "
-            "URLs muertas usando cleanup_dead_deals_auto (dry-run por "
-            "defecto)."
+            "Scan the aggregated deals table in Supabase for dead URLs "
+            "using cleanup_dead_deals_auto (dry-run by default)."
         ),
     )
     p_scan_dead.add_argument(
         "--table",
         default="deals",
         help=(
-            "Tabla de Supabase a escanear (normalmente 'deals').",
+            "Supabase table to scan (normally 'deals').",
         ),
     )
     p_scan_dead.add_argument(
         "--limit",
         type=int,
         default=200,
-        help="Número máximo de filas recientes a revisar (por defecto 200)",
+        help="Maximum number of recent rows to review (default 200)",
     )
     p_scan_dead.add_argument(
         "--apply",
         action="store_true",
         help=(
-            "Si se pasa, aplica también la limpieza automática (igual que "
-            "cleanup_dead_deals_auto --apply). Sin este flag solo imprime."
+            "If passed, also applies automatic cleanup (same as "
+            "cleanup_dead_deals_auto --apply). Without this flag only prints."
         ),
     )
     p_scan_dead.set_defaults(func=cmd_scan_dead)
 
-    # deals-html (pipeline + HTML opcional + fallback a BD)
+    # deals-html (pipeline + optional HTML + DB fallback)
     p_deals_html = sub.add_parser(
         "deals-html",
         help=(
-            "Ejecutar el pipeline y generar un snippet HTML en una sola "
-            "pasada, con fallback opcional a BD si no hay deals."
+            "Run the pipeline and generate an HTML snippet in a single "
+            "pass, with optional DB fallback when there are no deals."
         ),
     )
     p_deals_html.add_argument(
         "--mode",
         help="Mode name defined in run_config.json",
-        default="normal",
+        default=None,
     )
     p_deals_html.add_argument(
         "--limit",
-        help="Override del límite de deals a procesar/renderizar",
+        help="Override the deals limit to process/render",
     )
     p_deals_html.add_argument(
         "--sources",
         help=(
-            "Override de fuentes de scraping (por defecto las del modo). "
-            "Valores: travel-dealz,secretflying (separados por comas)"
+            "Override scraping sources (default from the mode). "
+            "Values: travel-dealz,secretflying (comma-separated)"
         ),
     )
     p_deals_html.add_argument(
         "--no-persist",
         action="store_true",
-        help="No persistir deals en Supabase (solo scraping + scoring en memoria)",
+        help="Do not persist deals to Supabase (scraping + scoring in memory only)",
     )
     p_deals_html.add_argument(
         "--output",
         help=(
-            "Ruta de salida relativa (desde backend/) para el snippet. "
-            "Por defecto snippets/deals.html"
+            "Relative output path (from backend/) for the snippet. "
+            "Default snippets/deals.html"
         ),
     )
     p_deals_html.add_argument(
         "--reset-deals",
-        choices=["travel-dealz", "secretflying", "amadeus", "deals-all", "all"],
+        choices=["travel-dealz", "secretflying", "duffel", "deals-all", "all"],
         help=(
-            "Vaciar tablas de deals antes de ejecutar el pipeline. "
-            "Valores: travel-dealz, secretflying, amadeus, deals-all, all. "
-            "Usa truncate_deals_tables con --force."
+            "Clear deals tables before running the pipeline. "
+            "Values: travel-dealz, secretflying, duffel, deals-all, all. "
+            "Uses truncate_deals_tables with --force."
         ),
     )
     p_deals_html.add_argument(
         "--clean-dead",
         choices=["travel-dealz", "secretflying", "all"],
         help=(
-            "Antes de ejecutar el pipeline, revisar URLs muertas en la "
-            "tabla de deals correspondiente y limpiarlas automáticamente."
+            "Before running the pipeline, check for dead URLs in the "
+            "corresponding deals table and clean them up automatically."
         ),
     )
     p_deals_html.add_argument(
         "--clean-limit",
         type=int,
         default=200,
-        help="Número máximo de filas a revisar al usar --clean-dead (por defecto 200)",
+        help="Maximum number of rows to review when using --clean-dead (default 200)",
     )
     p_deals_html.add_argument(
         "--from-db-if-empty",
         action="store_true",
         help=(
-            "Si el pipeline devuelve 0 deals, generar el HTML desde BD "
-            "(tabla deals por defecto)."
+            "If the pipeline returns 0 deals, generate the HTML from the DB "
+            "(deals table by default)."
         ),
     )
     p_deals_html.add_argument(
         "--table",
         default="deals",
-        help="Tabla de Supabase para el fallback desde BD (p.ej. deals)",
+        help="Supabase table for the DB fallback (e.g. deals)",
     )
     p_deals_html.set_defaults(func=cmd_deals_html)
 

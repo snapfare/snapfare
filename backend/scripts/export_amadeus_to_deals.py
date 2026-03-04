@@ -1,13 +1,13 @@
 #!/usr/bin/env python
-"""Copiar deals de Amadeus (deals_amadeus) a la tabla deals.
+"""Copy Amadeus deals (deals_amadeus) to the deals table.
 
-Uso (desde la raíz del repo):
+Usage (from repo root):
 
     python -m backend.scripts.export_amadeus_to_deals \
         --origins ZRH,BSL
 
-Si no se pasa --origins, se usa ORIGIN_IATA_FILTER del .env si existe;
-si tampoco está definido, se exportan todos los orígenes.
+If --origins is not provided, ORIGIN_IATA_FILTER from .env is used if it exists;
+if that is not defined either, all origins are exported.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
 import sys
 
-# Asegurar que backend/ esté en sys.path y cargar .env antes de importar Supabase
+# Ensure backend/ is on sys.path and load .env before importing Supabase
 THIS_DIR = Path(__file__).resolve().parent
 BACKEND_ROOT = THIS_DIR.parent
 if str(BACKEND_ROOT) not in sys.path:
@@ -80,9 +80,9 @@ def _get_origin_filter_from_env() -> Set[str]:
 
 
 def _load_existing_deal_keys() -> Set[Tuple[str, str, str, str]]:
-    """Cargar claves (origin_iata,destination_iata,date_out,date_in) ya presentes en deals.
+    """Load keys (origin_iata,destination_iata,date_out,date_in) already present in deals.
 
-    Esto se usa para evitar insertar duplicados si se ejecuta el script varias veces.
+    This is used to avoid inserting duplicates if the script is run multiple times.
     """
 
     keys: Set[Tuple[str, str, str, str]] = set()
@@ -112,23 +112,23 @@ def _load_existing_deal_keys() -> Set[Tuple[str, str, str, str]]:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Exportar filas desde deals_amadeus a deals_all con el mismo "
-            "esquema que deals_traveldealz/deals_secretflying, evitando "
-            "duplicados básicos."
+            "Export rows from deals_amadeus to deals_all using the same "
+            "schema as deals_traveldealz/deals_secretflying, avoiding "
+            "basic duplicates."
         ),
     )
     parser.add_argument(
         "--origins",
         help=(
-            "Lista separada por comas de códigos IATA de origen a exportar "
-            "(por ejemplo ZRH,BSL). Si se omite, se usa ORIGIN_IATA_FILTER "
-            "del entorno; si tampoco existe, se exportan todos los orígenes."
+            "Comma-separated list of origin IATA codes to export "
+            "(e.g. ZRH,BSL). If omitted, ORIGIN_IATA_FILTER from the "
+            "environment is used; if that is not defined either, all origins are exported."
         ),
     )
     args = parser.parse_args()
 
     if not _client:
-        print("[export_amadeus_to_deals] Supabase no configurado; abortando.")
+        print("[export_amadeus_to_deals] Supabase not configured; aborting.")
         return
 
     origins = _parse_origins_arg(args.origins)
@@ -136,19 +136,19 @@ def main() -> None:
         origins = _get_origin_filter_from_env()
 
     if origins:
-        print(f"[export_amadeus_to_deals] Filtrando por orígenes: {sorted(origins)}")
+        print(f"[export_amadeus_to_deals] Filtering by origins: {sorted(origins)}")
     else:
-        print("[export_amadeus_to_deals] Sin filtro de origen; exportando todos los registros.")
+        print("[export_amadeus_to_deals] No origin filter; exporting all records.")
 
     try:
         rsp = _client.table("deals_amadeus").select("*").execute()
     except Exception as e:
-        print(f"[export_amadeus_to_deals] Error al leer deals_amadeus: {e!r}")
+        print(f"[export_amadeus_to_deals] Error reading deals_amadeus: {e!r}")
         return
 
     rows = getattr(rsp, "data", []) or []
     if not isinstance(rows, list) or not rows:
-        print("[export_amadeus_to_deals] No hay filas en deals_amadeus; nada que exportar.")
+        print("[export_amadeus_to_deals] No rows in deals_amadeus; nothing to export.")
         return
 
     def _keep_row(row: Dict[str, Any]) -> bool:
@@ -160,11 +160,11 @@ def main() -> None:
     filtered_rows: List[Dict[str, Any]] = [r for r in rows if isinstance(r, dict) and _keep_row(r)]
 
     if not filtered_rows:
-        print("[export_amadeus_to_deals] Ninguna fila coincide con el filtro de orígenes; nada que hacer.")
+        print("[export_amadeus_to_deals] No rows match the origin filter; nothing to do.")
         return
 
     existing_keys = _load_existing_deal_keys()
-    print(f"[export_amadeus_to_deals] Claves existentes en deals: {len(existing_keys)}")
+    print(f"[export_amadeus_to_deals] Existing keys in deals: {len(existing_keys)}")
 
     payload: List[Dict[str, Any]] = []
 
@@ -179,8 +179,8 @@ def main() -> None:
             if key in existing_keys:
                 continue
 
-        # Construir nombre corto del vuelo estilo "ZRH → JFK" y derivar
-        # millas y duración aproximadas a partir de la distancia.
+        # Build short flight name like "ZRH → JFK" and derive
+        # approximate miles and duration from the distance.
         flight_name = None
         approx_miles: Optional[int] = None
         flight_duration_minutes: Optional[int] = None
@@ -196,7 +196,7 @@ def main() -> None:
             gc_miles = great_circle_miles(origin_iata, dest_iata)
             if gc_miles is not None:
                 approx_miles = approximate_program_miles(gc_miles)
-                # Estimar ida
+                # Estimate outbound
                 out_mins = _estimate_duration_minutes(origin_iata, dest_iata)
                 out_disp = _format_duration(out_mins)
                 if out_mins:
@@ -213,7 +213,7 @@ def main() -> None:
                         }
                     )
 
-                # Estimar regreso solo si hay fecha de vuelta
+                # Estimate return only if there is a return date
                 if not one_way:
                     ret_mins = _estimate_duration_minutes(dest_iata, origin_iata)
                     ret_disp = _format_duration(ret_mins)
@@ -232,18 +232,18 @@ def main() -> None:
         row_payload: Dict[str, Any] = {
             "title": r.get("title") or flight_name,
             "price": r.get("price"),
-            # Para Amadeus normalmente no hay URL de artículo; dejamos link a
-            # lo que venga de deals_amadeus (si existiera) y booking_url vacío.
+            # For Amadeus there is normally no article URL; we keep the link from
+            # deals_amadeus (if any) and leave booking_url empty.
             "link": r.get("link"),
-            # No fijamos booking_url para evitar conflictos de formato; se
-            # puede rellenar más adelante si se añade un CTA propio.
+            # We do not set booking_url to avoid format conflicts; it can
+            # be filled in later if a custom CTA is added.
             "booking_url": None,
             "currency": r.get("currency"),
             "image": None,
             "cabin_baggage": None,
             "aircraft": _resolve_aircraft_model(r.get("aircraft"), r.get("aircraft")) or r.get("aircraft"),
             "airline": _resolve_airline_name(r.get("airline"), r.get("airline")) or r.get("airline"),
-            # Rellenar nombres de ciudad/aeropuerto a partir de IATA si no vienen.
+            # Fill in city/airport names from IATA codes if not provided.
             "origin": _resolve_city_name(r.get("origin"), origin_iata) or _resolve_city_name(None, origin_iata),
             "destination": _resolve_city_name(r.get("destination"), dest_iata) or _resolve_city_name(None, dest_iata),
             "miles": approx_miles,
@@ -257,29 +257,29 @@ def main() -> None:
             "origin_iata": origin_iata or None,
             "destination_iata": dest_iata or None,
             "source": "amadeus",
-            # Duración estimada basada en distancia.
+            # Estimated duration based on distance.
             "flight_duration_minutes": flight_duration_minutes,
             "flight_duration_display": flight_duration_display,
             "itineraries": itineraries or None,
-            # scoring se rellenará más abajo usando la misma lógica que el pipeline.
+            # scoring will be filled below using the same logic as the pipeline.
             "scoring": None,
         }
 
         payload.append(row_payload)
 
     if not payload:
-        print("[export_amadeus_to_deals] No hay nuevas filas que insertar en deals.")
+        print("[export_amadeus_to_deals] No new rows to insert into deals.")
         return
 
-    # Enriquecimiento opcional (OpenAI) para todas las filas de Amadeus
-    # cuando DEALS_ENRICH_DEFAULT=true (o por defecto true si no se define).
+    # Optional enrichment (OpenAI) for all Amadeus rows
+    # when DEALS_ENRICH_DEFAULT=true (or true by default if not defined).
     enrich_default = os.getenv("DEALS_ENRICH_DEFAULT", "true").strip().lower() in {"1", "true", "yes", "on"}
     if enrich_default:
         payload = enrich_deals_batch(payload, max_items=len(payload))
 
-    # Normalizar metadatos LLM: si no hubo enriquecimiento o falló, se
-    # guarda llm_enriched=False y campos nulos; si hubo, se conservan los
-    # campos devueltos.
+    # Normalize LLM metadata: if enrichment did not happen or failed,
+    # llm_enriched=False and null fields are stored; if it did, the
+    # returned fields are preserved.
     normalized_payload: List[Dict[str, Any]] = []
     for row in payload:
         row_norm = dict(row)
@@ -287,7 +287,7 @@ def main() -> None:
         normalized_payload.append(row_norm)
     payload = normalized_payload
 
-    # Calcular scoring usando la misma lógica que el pipeline principal.
+    # Compute scoring using the same logic as the main pipeline.
     benchmarks = _load_amadeus_benchmarks()
     deals_for_scoring: List[Dict[str, Any]] = []
     for idx, row in enumerate(payload):
@@ -299,7 +299,7 @@ def main() -> None:
                 "currency": row.get("currency"),
                 "origin_iata": row.get("origin_iata"),
                 "destination_iata": row.get("destination_iata"),
-                # score_deals mira `departure_date` o `date_out` para extraer el mes
+                # score_deals looks at `departure_date` or `date_out` to extract the month
                 "date_out": row.get("date_out"),
                 "departure_date": row.get("date_out"),
             }
@@ -318,9 +318,9 @@ def main() -> None:
         if idx in scores_by_id and scores_by_id[idx] is not None:
             row["scoring"] = scores_by_id[idx]
 
-    print(f"[export_amadeus_to_deals] Insertando {len(payload)} filas nuevas en deals...")
+    print(f"[export_amadeus_to_deals] Inserting {len(payload)} new rows into deals...")
     result = save_deals("deals", payload)
-    print("[export_amadeus_to_deals] Resultado Supabase:", result)
+    print("[export_amadeus_to_deals] Supabase result:", result)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 from scrapers.travel_dealz import _extract_route_from_title
 
 
-# Cache liviano de nombres de aeropuerto (alemán) indexado por IATA
+# Lightweight cache of airport names (German) indexed by IATA
 _AIRPORT_NAMES_BY_IATA: Dict[str, str] | None = None
 
 
@@ -94,7 +94,7 @@ def _resolve_city_from_iata(city_val: Any, iata_val: Any) -> Optional[str]:
             if bad_re.search(city_str) or len(city_str) > 45:
                 city_str = None
 
-    # Si ya tenemos un nombre de la página (limpio), no lo sobreescribimos con el CSV
+    # If we already have a (clean) name from the page, don't overwrite it with the CSV
     if city_str:
         return city_str
 
@@ -102,7 +102,7 @@ def _resolve_city_from_iata(city_val: Any, iata_val: Any) -> Optional[str]:
         mapped = _load_airport_names_map().get(iata_str)
         if mapped:
             return mapped
-        # Sin mapeo, devolvemos el propio código IATA para no dejarlo vacío
+        # No mapping found; return the IATA code itself to avoid leaving it empty
         return iata_str
 
     return city_str or iata_str
@@ -203,17 +203,17 @@ def _detect_currency(text: str) -> str:
 def _parse_price_from_text(text: str) -> tuple[Optional[float], str]:
     """Extract a numeric price only when there is an explicit currency.
 
-    Nota importante: en títulos tipo "2-in-1: ... ab 577€ ..." el primer número
-    ("2") NO es el precio. Por eso priorizamos números adyacentes a símbolos
-    o códigos de moneda (577€), antes de caer a heurísticas más generales.
+    Important note: in titles like "2-in-1: ... ab 577€ ..." the first number
+    ("2") is NOT the price. That is why we prioritise numbers adjacent to currency
+    symbols or codes (577€) before falling back to more general heuristics.
 
-    Esto también evita confundir días de fecha ("2 – 13 March") con precios
-    cuando el texto no contiene símbolo de moneda ni código (EUR, USD, ...).
+    This also avoids confusing date numbers ("2 – 13 March") with prices
+    when the text contains no currency symbol or code (EUR, USD, ...).
     """
     if not text:
         return None, "EUR"
 
-    # ¿Hay alguna pista de divisa en el texto?
+    # Is there any currency hint in the text?
     has_currency = bool(re.search(r"(€|\$|£|\b(?:eur|usd|chf|gbp)\b)", text, re.IGNORECASE))
     if not has_currency:
         return None, "EUR"
@@ -265,21 +265,21 @@ def _parse_price_from_text(text: str) -> tuple[Optional[float], str]:
 def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, fallback_title: str = "") -> List[Dict[str, Any]]:
     """Parse all booking links (go2.travel-dealz.eu/?from=...&to=...) into itineraries.
 
-    No dependemos de la sección "Search & Book" salvo para fechas; aquí
-    buscamos en todo el HTML enlaces con el patrón de booking y usamos su
-    texto para inferir la ciudad de origen.
+    We don't depend on the "Search & Book" section except for dates; here
+    we search the entire HTML for links matching the booking pattern and use
+    their text to infer the origin city.
     """
     itineraries: List[Dict[str, Any]] = []
     if not root:
         return itineraries
 
     seen_urls: set[str] = set()
-    # Deduplicamos por combinación lógica de parámetros (from/to/fechas, etc.)
-    # para evitar contar dos veces el mismo vuelo con URLs casi idénticas.
+    # Deduplicate by logical combination of parameters (from/to/dates, etc.)
+    # to avoid counting the same flight twice with nearly identical URLs.
     seen_keys: set[tuple] = set()
 
-    # Pequeño helper para extraer origen/destino de una línea de texto
-    # como "Honolulu → Hamburg [from €203]" o "Barcelona at €969".
+    # Small helper to extract origin/destination from a text line
+    # like "Honolulu → Hamburg [from €203]" or "Barcelona at €969".
     def _parse_route_line(line: str) -> tuple[Optional[str], Optional[str]]:
         origin_name: Optional[str] = None
         dest_name: Optional[str] = None
@@ -289,12 +289,12 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
 
         text = line.strip()
 
-        # Patrón principal con flecha
+        # Main pattern with arrow
         if "→" in text:
             left, right = text.split("→", 1)
             origin_name = left.strip() or None
 
-            # Destino: parte antes de corchetes o " from ", si existen
+            # Destination: part before brackets or " from ", if present
             right_clean = right
             if "[" in right_clean:
                 right_clean = right_clean.split("[", 1)[0]
@@ -306,15 +306,15 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
                 origin_name = re.sub(r"(?i)^from\s+", "", origin_name).strip() or None
             return origin_name, dest_name
 
-        # Patrones de una sola ciudad tipo
+        # Single-city patterns like
         #   "Stockholm: €368"
         #   "Barcelona at €969 *"
-        # y frases del estilo
+        # and phrases such as
         #   "You can also purchase one way tickets from Oslo at €641".
-        # En la práctica, en casi todos los deals modernos de Travel-Dealz
-        # esta ciudad es el ORIGEN (la lista enumera aeropuertos de salida).
-        # La ciudad de destino real suele aparecer como "Destination" global
-        # (p.ej. Bangkok) o en el propio título del artículo.
+        # In practice, in almost all modern Travel-Dealz deals
+        # this city is the ORIGIN (the list enumerates departure airports).
+        # The actual destination city usually appears as the global "Destination"
+        # (e.g. Bangkok) or in the article title itself.
         city: Optional[str] = None
         base = text
         if ":" in base:
@@ -325,24 +325,24 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
                 base = m_city.group(1).strip()
 
         if base:
-            # 1) Si el texto contiene uno o varios "from X", nos quedamos
-            #    con la última ciudad X (p.ej. "from Oslo" dentro de una
-            #    frase larga).
+            # 1) If the text contains one or more "from X", we keep
+            #    the last city X (e.g. "from Oslo" inside a
+            #    long sentence).
             from_matches = list(
                 re.finditer(r"\bfrom\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)", base)
             )
             if from_matches:
                 city = from_matches[-1].group(1).strip(" ,.")
             else:
-                # 2) Como fallback muy conservador, solo aceptamos el
-                #    texto completo como ciudad si parece un nombre propio
-                #    corto tipo "Oslo" o "Los Angeles" (una o varias
-                #    palabras, todas con inicial mayúscula).
+                # 2) As a very conservative fallback, we only accept the
+                #    full text as a city if it looks like a proper name,
+                #    short like "Oslo" or "Los Angeles" (one or more
+                #    words, all with initial uppercase).
                 if re.match(r"^[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*$", base.strip()):
                     candidate = base.strip()
 
-                    # Evitar tratar textos de call-to-action como ciudades,
-                    # p.ej. "Show Deal", "Show Flights", etc.
+                    # Avoid treating call-to-action texts as cities,
+                    # e.g. "Show Deal", "Show Flights", etc.
                     bad_tokens = {"deal", "deals", "flight", "flights", "fare", "fares", "search", "click", "here"}
                     lower_candidate = candidate.lower()
                     if not any(tok in lower_candidate for tok in bad_tokens):
@@ -353,20 +353,20 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
 
         return origin_name, dest_name
 
-    # 1) Listas de precios con booking URLs en <li>
+    # 1) Price lists with booking URLs in <li>
     for li in root.find_all("li"):
         li_text = li.get_text(" ", strip=True)
         if not li_text:
             continue
 
-        # Intentar extraer ORIGEN y DESTINO del propio texto de la línea.
-        # Casos cubiertos:
-        #   - "Stockholm: €368"  → city único (usado como destino genérico)
-        #   - "Madrid at €545"   → city único (usado como destino genérico)
-        #   - "Honolulu → Hamburg [from €203]" → origen y destino explícitos
+        # Try to extract ORIGIN and DESTINATION from the line's own text.
+        # Cases covered:
+        #   - "Stockholm: €368"  → single city (used as generic destination)
+        #   - "Madrid at €545"   → single city (used as generic destination)
+        #   - "Honolulu → Hamburg [from €203]" → explicit origin and destination
         origin_name, dest_name = _parse_route_line(li_text)
 
-        # booking URL y precio: del primer enlace del <li>
+        # booking URL and price: from the first link in the <li>
         a = li.find("a", href=True)
         booking_url = None
         price = None
@@ -377,7 +377,7 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
                 href = "https:" + href
             if href.startswith("/"):
                 href = urljoin(base_url, href)
-            # Solo consideramos enlaces go2.travel-dealz.* como booking URLs válidas
+            # We only consider go2.travel-dealz.* links as valid booking URLs
             if "go2.travel-dealz." in href:
                 booking_url = href
 
@@ -387,10 +387,10 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
             price, currency = _parse_price_from_text(li_text)
 
         if not (booking_url or price):
-            # Probablemente no es una línea de precios real
+            # Probably not a real price line
             continue
 
-        # Solo creamos itinerarios para booking URLs válidas con parámetros from/to
+        # We only create itineraries for valid booking URLs with from/to parameters
         if booking_url:
             try:
                 parsed = urlparse(booking_url)
@@ -408,11 +408,11 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
                 resolved_from_name = _resolve_city_from_iata(None, from_code)
                 resolved_to_name = _resolve_city_from_iata(None, to_code)
 
-                # Si el texto del botón menciona la ciudad de destino pero no hay flecha,
-                # evitamos tratarla como origen cuando coincide claramente con el to_code.
+                # If the button text mentions the destination city but there is no arrow,
+                # avoid treating it as the origin when it clearly matches the to_code.
                 if origin_name and not dest_name and resolved_to_name:
                     if _normalize_city_name(origin_name) == _normalize_city_name(resolved_to_name):
-                        # Siempre que no coincida también con el origen
+                        # As long as it does not also match the origin
                         if not resolved_from_name or _normalize_city_name(origin_name) != _normalize_city_name(resolved_from_name):
                             dest_name = origin_name
                             origin_name = None
@@ -423,7 +423,7 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
                 cabinclass = (_first("cabinclass") or "").upper()
                 airlines = (_first("airlines") or "").upper()
 
-                # Para deduplicar, normalizamos también la divisa.
+                # For deduplication, we also normalise the currency.
                 currency_param = (_first("currency") or (currency or "")).upper()
 
                 key = (
@@ -445,10 +445,9 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
                 seen_urls.add(booking_url)
 
                 itin: Dict[str, Any] = {
-                    # Si hemos podido extraer origen/destino por nombre, los
-                    # usamos directamente; si no, al menos los códigos IATA
-                    # quedarán rellenos y más tarde podremos mostrar
-                    # "HNL → HAM", etc.
+                    # If we were able to extract origin/destination by name, we
+                    # use them directly; otherwise, at least the IATA codes will
+                    # be populated and we can later display "HNL → HAM", etc.
                     "origin": origin_name,
                     "destination": dest_name,
                     "price": price,
@@ -480,7 +479,7 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
 
                 itineraries.append(itin)
             except Exception:
-                # Si el parsing del booking_url falla, simplemente ignoramos la línea
+                # If parsing the booking_url fails, simply skip the line
                 continue
 
     # 1b) Botones de precios tipo wp-block-button (caso sin <li>)
@@ -494,7 +493,7 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
         if href.startswith("/"):
             href = urljoin(base_url, href)
 
-        # Solo nos interesan enlaces go2.travel-dealz.*
+        # We only care about go2.travel-dealz.* links
         if "go2.travel-dealz." not in href:
             continue
 
@@ -504,9 +503,9 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
         if not text:
             continue
 
-        # Intentar usar el texto del propio botón, y si no es suficiente
-        # (p.ej. sólo "Show Deal *"), mirar el texto del contenedor padre
-        # para detectar patrones "Honolulu → Hamburg [from €203]".
+        # Try using the button's own text first; if it is not informative enough
+        # (e.g. just "Show Deal *"), look at the parent container text to detect
+        # patterns like "Honolulu → Hamburg [from €203]".
         origin_name: Optional[str] = None
         dest_name: Optional[str] = None
 
@@ -520,7 +519,7 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
                 if o2 or d2:
                     origin_name, dest_name = o2, d2
 
-        # Compatibilidad hacia atrás: city único tratado como destino genérico
+        # Backward compatibility: single city treated as generic destination
         city: Optional[str] = None
         if not (origin_name or dest_name):
             if ":" in text:
@@ -548,7 +547,7 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
             resolved_from_name = _resolve_city_from_iata(None, from_code)
             resolved_to_name = _resolve_city_from_iata(None, to_code)
 
-            # Ajustar ciudad suelta al destino cuando coincide con to_code.
+            # Map a loose city to destination when it matches to_code.
             if not (origin_name or dest_name) and city:
                 norm_city = _normalize_city_name(city)
                 if resolved_to_name and norm_city == _normalize_city_name(resolved_to_name):
@@ -623,8 +622,8 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
         except Exception:
             continue
 
-    # 1c) Enlaces genéricos a go2.travel-dealz.eu en párrafos, figuras, etc.
-    #    Esto cubre casos como:
+    # 1c) Generic go2.travel-dealz.eu links in paragraphs, figures, etc.
+    #    This covers cases like:
     #    <p>... <a href="https://go2.travel-dealz.eu/?from=BRU&to=DPS&...">Brussels</a> ...</p>
     #    <figure><a href="https://go2.travel-dealz.eu/?from=BRU&to=CGK&..."><img ...></a></figure>
     for a in root.find_all("a", href=True):
@@ -637,7 +636,7 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
         if href.startswith("/"):
             href = urljoin(base_url, href)
 
-        # Solo nos interesan enlaces go2.travel-dealz (cubre .eu, .com, etc.)
+        # We only care about go2.travel-dealz links (covers .eu, .com, etc.)
         if "go2.travel-dealz." not in href:
             continue
 
@@ -645,8 +644,8 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
 
         text = a.get_text(" ", strip=True) or ""
 
-        # Igual que en los botones: primero intentamos con el propio texto
-        # del enlace y, si no basta, usamos el texto del padre como contexto.
+        # Same as for buttons: first try the link's own text, and if that is
+        # not sufficient, use the parent text as context.
         origin_name: Optional[str] = None
         dest_name: Optional[str] = None
 
@@ -711,7 +710,7 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
             resolved_from_name = _resolve_city_from_iata(None, from_code)
             resolved_to_name = _resolve_city_from_iata(None, to_code)
 
-            # Ajustar ciudad suelta al destino cuando coincide con to_code.
+            # Map a loose city to destination when it matches to_code.
             if not (origin_name or dest_name) and city:
                 norm_city = _normalize_city_name(city)
                 if resolved_to_name and norm_city == _normalize_city_name(resolved_to_name):
@@ -734,14 +733,13 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
             currency_param = (_first_generic("currency") or currency or "").upper()
             airlines = (_first_generic("airlines") or "").upper()
 
-            # Algunos artículos incluyen enlaces auxiliares a agencias online
-            # (OTAs) dentro de párrafos explicativos, p.ej. "booking through
-            # online travel agencies at the lowest price". Esos enlaces
-            # suelen llevar direct=false y no tienen un precio explícito en
-            # el texto del anchor. Si ya hemos detectado itinerarios
-            # equivalentes (mismo from/to, cabina y aerolínea) directos,
-            # ignoramos estos enlaces auxiliares para no crear "viajes"
-            # adicionales irrelevantes.
+            # Some articles include auxiliary links to online travel agencies
+            # (OTAs) inside explanatory paragraphs, e.g. "booking through
+            # online travel agencies at the lowest price". Those links
+            # usually carry direct=false and have no explicit price in the
+            # anchor text. If we have already detected equivalent itineraries
+            # (same from/to, cabin and airline) that are direct, we ignore
+            # these auxiliary links to avoid creating additional irrelevant trips.
             direct_param = (_first_generic("direct") or "").lower()
             if direct_param in {"false", "0"} and price is None:
                 exists_equivalent = any(
@@ -806,8 +804,8 @@ def _extract_itineraries_from_booking_links(root: BeautifulSoup, base_url: str, 
         except Exception:
             continue
 
-    # Sin fallbacks agresivos: si no hay booking URLs válidas con from/to,
-    # devolvemos simplemente la lista vacía y dejamos el deal sin itinerarios.
+    # No aggressive fallbacks: if there are no valid booking URLs with from/to,
+    # we simply return an empty list and leave the deal without itineraries.
     return itineraries
 
 
@@ -938,6 +936,42 @@ def _extract_miles_from_section(section: BeautifulSoup) -> Optional[str]:
     return _fmt(best_miles)
 
 
+_STOP_PATTERNS: list = [
+    # 0 stops — direct / nonstop (German "Nonstop" has no hyphen)
+    (re.compile(
+        r'\b(nonstop|non[-\s]stop|direktflug|direktfl[üu]ge|'
+        r'ohne\s+umstieg|ohne\s+zwischenstopp|direct\s+flight|'
+        r'without\s+a\s+(stop|change))\b',
+        re.I
+    ), 0),
+    # Explicit numeric counts — higher numbers first so "2 Umstiegen" wins over generic "Umstieg"
+    (re.compile(r'\b(mit\s+)?(drei|3)\s*umstiegen?\b|\b3\s+stopp?s?\b', re.I), 3),
+    (re.compile(r'\b(mit\s+)?(zwei|2)\s*umstiegen?\b|\b2\s+stopp?s?\b', re.I), 2),
+    (re.compile(r'\b1\s+stopp?\b|\bmit\s+(einem?\s+)?umstieg\b', re.I), 1),
+    # Generic at-least-1-stop: German + English
+    (re.compile(
+        r'\b(change\s+of\s+planes?|continue\s+(your\s+)?journey\s+(to|on|with)|'
+        r'transfer\s+(in|at)|with\s+a\s+(stop|change)\s+in|'
+        r'zwischenstopp|umstieg|umstiegen|layover|anschlussflug)\b',
+        re.I
+    ), 1),
+]
+
+
+def _infer_stops_from_text(text: str) -> Optional[int]:
+    """Scan article text for stop count indicators (German + English).
+
+    Returns an integer stop count if a clear indicator is found, else None.
+    Checks more specific patterns (exact count) before generic ones.
+    """
+    if not text:
+        return None
+    for pattern, count in _STOP_PATTERNS:
+        if pattern.search(text):
+            return count
+    return None
+
+
 def _extract_baggage_from_section(section: BeautifulSoup) -> Optional[str]:
     """Try to extract a short baggage summary from Search & Book block."""
     if not section:
@@ -1007,7 +1041,7 @@ def _extract_airline_from_intro(soup: BeautifulSoup) -> Optional[str]:
     if not text:
         return None
 
-    # Patrón principal: "SkyTeam member Vietnam Airlines is offering ...",
+    # Main pattern: "SkyTeam member Vietnam Airlines is offering ...",
     # "Oneworld member British Airways has once again launched ...", etc.
     m = re.search(
         r"(SkyTeam|Oneworld|Star Alliance)\s+member\s+([A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*)*)",
@@ -1016,7 +1050,7 @@ def _extract_airline_from_intro(soup: BeautifulSoup) -> Optional[str]:
     if m:
         return m.group(2).strip()
 
-    # Patrón genérico: "Etihad Airways is offering a deal", "X offers ..."
+    # Generic pattern: "Etihad Airways is offering a deal", "X offers ..."
     m = re.search(
         r"([A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*)*)\s+"
         r"(?:is offering|offers|are offering|is currently offering|has launched|has once again launched|launched|is selling|sells)",
@@ -1036,7 +1070,7 @@ def _extract_airline_from_intro(soup: BeautifulSoup) -> Optional[str]:
 def _extract_airline_from_article_classes(soup: BeautifulSoup) -> Optional[str]:
     """Fallback: infer airline from <article> CSS classes (airline-...).
 
-    Ignora clases de alianzas como airline-oneworld, airline-skyteam, etc.
+    Ignores alliance classes such as airline-oneworld, airline-skyteam, etc.
     """
     article = soup.find("article")
     if not article:
@@ -1060,7 +1094,7 @@ def _extract_airline_from_article_classes(soup: BeautifulSoup) -> Optional[str]:
 def _extract_origin_from_article_classes(soup: BeautifulSoup) -> tuple[Optional[str], Optional[str]]:
     """Infer origin city name and IATA from <article> CSS classes.
 
-    Busca clases tipo origins-dublin-airport-dub y devuelve ("Dublin", "DUB").
+    Looks for classes like origins-dublin-airport-dub and returns ("Dublin", "DUB").
     """
     article = soup.find("article")
     if not article:
@@ -1080,7 +1114,7 @@ def _extract_origin_from_article_classes(soup: BeautifulSoup) -> tuple[Optional[
         else:
             name_parts = parts
 
-        # Quitar sufijos genéricos como "airport"
+        # Remove generic suffixes such as "airport"
         filtered = [p for p in name_parts if p not in {"airport"}]
         if not filtered:
             filtered = name_parts
@@ -1106,7 +1140,7 @@ def _extract_aircraft_from_body(soup: BeautifulSoup) -> Optional[str]:
     )
     if m:
         raw = m.group(1).strip()
-        # Quitar sufijo genérico "Serie" y normalizar espacios/guiones
+        # Remove generic suffix "Serie" and normalise spaces/hyphens
         cleaned = re.sub(r"(?i)\bserie\b", "", raw)
         cleaned = cleaned.replace("-", " ")
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
@@ -1117,16 +1151,16 @@ def _extract_aircraft_from_body(soup: BeautifulSoup) -> Optional[str]:
 def _extract_destinations_from_destination_section(soup: BeautifulSoup) -> List[str]:
     """Extract destination city names from 'Destination / Information & Tips' blocks.
 
-    Travel-Dealz suele tener secciones como:
+    Travel-Dealz typically has sections like:
       - "Destination"
       - "Information & Tips for Seoul"
-    y, en caso de múltiples destinos, varios bloques similares.
+    and, when there are multiple destinations, several similar blocks.
     """
     dests: List[str] = []
 
     # Look for headings/summary elements containing "Information & Tips for" and
-    # capture the city part. En muchos artículos, esto está en un <summary>
-    # dentro de <details>, no solo en h2/h3/h4.
+    # capture the city part. In many articles this lives inside a <summary>
+    # within <details>, not only in h2/h3/h4.
     for heading in soup.find_all(["h2", "h3", "h4", "summary"], string=True):
         text = heading.get_text(" ", strip=True)
         if not text:
@@ -1137,8 +1171,8 @@ def _extract_destinations_from_destination_section(soup: BeautifulSoup) -> List[
             if city and city not in dests:
                 dests.append(city)
 
-    # Bloques cuyo título contiene "Destination" o "Ziel"; extraer texto del
-    # propio heading y de su siguiente bloque (enlaces o subtítulos con ciudades).
+    # Blocks whose heading contains "Destination" or "Ziel"; extract text from
+    # the heading itself and from its next sibling block (links or sub-headings with cities).
     for heading in soup.find_all(["h2", "h3", "h4", "summary"], string=True):
         text = heading.get_text(" ", strip=True)
         if not text:
@@ -1146,14 +1180,14 @@ def _extract_destinations_from_destination_section(soup: BeautifulSoup) -> List[
         if "destination" not in text.lower() and "ziel" not in text.lower():
             continue
 
-        # Si el heading incluye el nombre, p.ej. "Destination: São Paulo"
+        # If the heading includes the name, e.g. "Destination: São Paulo"
         m2 = re.search(r"Destination[:\-]\s*(.+)", text, re.IGNORECASE)
         if m2:
             city = m2.group(1).strip()
             if city and city not in dests:
                 dests.append(city)
 
-        # Mirar el siguiente bloque por enlaces/títulos con nombres capitalizados
+        # Look at the next sibling block for links/headings with capitalised names
         block = heading.find_next_sibling(["div", "section", "p", "ul", "ol"])
         if block:
             candidates = []
@@ -1193,10 +1227,10 @@ def _extract_dates_and_expiry(
         if first_p is not None:
             travel_text = first_p.get_text(" ", strip=True)
 
-            # Algunos artículos usan una letra inicial tipo "drop cap" en un
-            # nodo separado justo antes del párrafo, de forma que el <p>
-            # contiene "he expiration date..." en lugar de "The expiration...".
-            # Corregimos explícitamente este patrón genérico de Travel-Dealz.
+            # Some articles use a "drop cap" initial letter in a separate node
+            # just before the paragraph, so the <p> contains
+            # "he expiration date..." instead of "The expiration...".
+            # We explicitly correct this Travel-Dealz-specific pattern.
             if travel_text.lower().startswith("he expiration date of this offer is not specified"):
                 travel_text = "T" + travel_text
 
@@ -1238,29 +1272,29 @@ def _build_itineraries_from_page_text(
 ) -> List[Dict[str, Any]]:
     """Fallback: build coarse itineraries only from page text.
 
-    Pensado para artículos que no tienen booking URLs tipo go2.travel-dealz,
-    como el ejemplo de Icelandair donde solo hay enlaces a Google Flights.
+    Intended for articles that have no go2.travel-dealz booking URLs,
+    such as the Icelandair example where only Google Flights links are present.
 
-    Estrategia muy conservadora:
-      - obtener un precio del título (o, si falla, del bloque "Search & Book"),
-      - usar la lista de destinos deducida de la sección "Destination",
-      - usar el origen oficial extraído de las clases del <article>, si existe.
+    Very conservative strategy:
+      - obtain a price from the title (or, if that fails, from the "Search & Book" block),
+      - use the list of destinations inferred from the "Destination" section,
+      - use the official origin extracted from the <article> classes, if available.
 
-    No intenta deducir códigos IATA de destino ni fechas precisas porque la
-    estructura no es trivial y depende de Google Flights.
+    Does not attempt to infer destination IATA codes or precise dates because
+    the structure is non-trivial and depends on Google Flights.
     """
 
     itineraries: List[Dict[str, Any]] = []
 
-    # 1) Precio base: primero intentamos con el título del artículo.
+    # 1) Base price: first try the article title.
     price, currency = _parse_price_from_text(title or "")
 
-    # También intentamos localizar una booking_url útil (p. ej. Google Flights)
-    # en la sección "Search & Book" o, si falla, en todo el artículo.
+    # We also try to locate a useful booking_url (e.g. Google Flights)
+    # in the "Search & Book" section or, if that fails, across the whole article.
     booking_url: Optional[str] = None
 
-    # Fallback: intentar encontrar un precio en "Search & Book" si el título
-    # no contiene ninguno (o el patrón falla), y de paso detectar booking_url.
+    # Fallback: try to find a price in "Search & Book" if the title contains
+    # none (or the pattern fails), and also detect a booking_url in the process.
     if price is None:
         sb_section = _extract_section_by_heading_any(soup, ["Search & Book", "Suchen & Buchen", "Suchen und Buchen"])
         if sb_section is not None:
@@ -1268,7 +1302,7 @@ def _build_itineraries_from_page_text(
             if sb_text:
                 price, currency = _parse_price_from_text(sb_text)
 
-            # Buscar primero enlaces de Google Flights dentro del bloque
+            # Search first for Google Flights links within the block
             for a in sb_section.find_all("a", href=True):
                 href = a["href"].strip()
                 if not href:
@@ -1281,8 +1315,8 @@ def _build_itineraries_from_page_text(
                     booking_url = href
                     break
 
-    # Si aún no tenemos booking_url, buscamos en todo el documento un enlace
-    # de Google Flights como último recurso.
+    # If we still have no booking_url, search the entire document for a
+    # Google Flights link as a last resort.
     if booking_url is None:
         for a in soup.find_all("a", href=True):
             href = a["href"].strip()
@@ -1296,26 +1330,26 @@ def _build_itineraries_from_page_text(
                 booking_url = href
                 break
 
-    # Si seguimos sin precio, no creamos itinerarios sintéticos.
+    # If we still have no price, do not create synthetic itineraries.
     if price is None:
         return itineraries
 
-    # Si no hay destinos claros, intenta extraer destino desde el título del artículo
+    # If there are no clear destinations, try to extract one from the article title
     if not destinations and title:
         _, t_dest = _extract_route_from_title(title)
         if t_dest:
             destinations = [t_dest]
 
-    # 2) Destinos: usamos la lista ya detectada. En artículos con stopover en
-    #    Islandia suele aparecer también "Iceland" como destino informativo;
-    #    si hay más destinos, lo filtramos para no tratarlo como destino final.
+    # 2) Destinations: use the already-detected list. In articles with a stopover in
+    #    Iceland, "Iceland" often appears as an informational destination;
+    #    if there are more destinations, filter it out so it is not treated as the final one.
     dests = list(destinations) if destinations else []
     if len(dests) > 1:
         filtered = [d for d in dests if "iceland" not in d.lower()]
         if filtered:
             dests = filtered
 
-    # Si no hay destinos claros, devolvemos un solo itinerario genérico.
+    # If there are no clear destinations, return a single generic itinerary.
     if not dests:
         itineraries.append(
             {
@@ -1330,7 +1364,7 @@ def _build_itineraries_from_page_text(
         )
         return itineraries
 
-    # 3) Crear un itinerario por destino conocido, compartiendo precio.
+    # 3) Create one itinerary per known destination, sharing the same price.
     for dest in dests:
         itineraries.append(
             {
@@ -1361,10 +1395,10 @@ def _parse_travel_dealz_soup(soup: BeautifulSoup, url: str) -> Dict[str, Any]:
     aircraft = _extract_aircraft_from_body(soup)
     destinations = _extract_destinations_from_destination_section(soup)
 
-    # Origen "oficial" del deal desde las clases del <article>, si está disponible
+    # Official deal origin from <article> CSS classes, if available
     origin_name_meta, origin_iata_meta = _extract_origin_from_article_classes(soup)
 
-    # Search & Book section: solo para fechas/expiry
+    # Search & Book section: used only for dates/expiry
     sb_section = _extract_section_by_heading_any(soup, ["Search & Book", "Suchen & Buchen", "Suchen und Buchen"])
     # Prefer explicit ids used by Travel-Dealz if present, then fall back to text search
     sb_heading = (
@@ -1380,9 +1414,9 @@ def _parse_travel_dealz_soup(soup: BeautifulSoup, url: str) -> Dict[str, Any]:
             ),
         )
     )
-    # Itinerarios: buscar booking URLs en todo el HTML, no solo en Search & Book.
-    # Si no hay enlaces tipo go2.travel-dealz, usamos un fallback basado en
-    # el propio texto de la página (título + sección Destination).
+    # Itineraries: search for booking URLs across the entire HTML, not only in Search & Book.
+    # If there are no go2.travel-dealz links, use a fallback based on the page's
+    # own text (title + Destination section).
     itineraries = _extract_itineraries_from_booking_links(soup, base_url=url, fallback_title=title)
     if not itineraries:
         itineraries = _build_itineraries_from_page_text(
@@ -1399,6 +1433,16 @@ def _parse_travel_dealz_soup(soup: BeautifulSoup, url: str) -> Dict[str, Any]:
     body = soup.find("article") or soup.find("main") or soup.body
     cabin_baggage = _extract_baggage_from_section(sb_section) or _extract_baggage_from_section(body)
 
+    # Stops: scan H1 first (most reliable — describes the primary deal),
+    # then the Search & Book section, then the full article body as fallback.
+    h1_tag = soup.find("h1")
+    h1_text = h1_tag.get_text(" ", strip=True) if h1_tag else ""
+    stops_count = _infer_stops_from_text(h1_text)
+    if stops_count is None and sb_section:
+        stops_count = _infer_stops_from_text(sb_section.get_text(" ", strip=True))
+    if stops_count is None:
+        stops_count = _infer_stops_from_text(body.get_text(" ", strip=True) if body else "")
+
     # Miles & Points (DE pages use "Meilen")
     mp_section = _extract_section_by_heading_any(soup, ["Miles & Points", "Meilen & Punkte", "Meilen"])
     miles_value = _extract_miles_from_section(mp_section)
@@ -1407,21 +1451,21 @@ def _parse_travel_dealz_soup(soup: BeautifulSoup, url: str) -> Dict[str, Any]:
     if len(destinations) == 1:
         dest_city = destinations[0]
         for it in itineraries:
-            # Solo si no tenemos destino ni destination_iata
+            # Only if we have neither a destination name nor a destination_iata
             if ("destination" not in it or not it.get("destination")) and not it.get("destination_iata"):
                 it["destination"] = dest_city
     elif destinations:
-        # Best-effort: si hay varios destinos y faltan destinos en itinerarios,
-        # usa el primero SOLO cuando tampoco hay destination_iata.
+        # Best-effort: if there are multiple destinations and some itineraries are missing
+        # one, use the first destination ONLY when destination_iata is also absent.
         for it in itineraries:
             if not it.get("destination") and not it.get("destination_iata"):
                 it["destination"] = destinations[0]
 
-    # Si alguna ciudad usada como origen en las líneas de precio coincide con
-    # una ciudad de la sección Destination, la tratamos como DESTINO, no como
-    # origen: movemos ese valor a destination (si está vacío) y borramos el
-    # origen. Esto cubre patrones como "You can reach these airports ..."
-    # donde las ciudades de la lista son destinos reales.
+    # If a city used as origin in the price lines matches a city from the
+    # Destination section, treat it as the DESTINATION, not the origin: move
+    # that value to destination (if empty) and clear the origin. This covers
+    # patterns like "You can reach these airports ..." where the listed cities
+    # are the actual destinations.
     if destinations:
         dest_norm = {_normalize_city_name(c) for c in destinations}
         for it in itineraries:
@@ -1433,48 +1477,48 @@ def _parse_travel_dealz_soup(soup: BeautifulSoup, url: str) -> Dict[str, Any]:
                     it["destination"] = orig
                 it["origin"] = None
 
-    # Si conocemos un origen "oficial" por clases (p.ej. Dublin / DUB),
-    # lo usamos para completar o incluso corregir el sentido del itinerario:
+    # If we know an "official" origin from CSS classes (e.g. Dublin / DUB),
+    # use it to complete or even correct the direction of each itinerary:
     #
-    # - caso normal: origin_iata == origin_iata_meta → rellenamos el nombre
-    # - caso invertido (como el ejemplo de Norse a CPT): si destination_iata
-    #   coincide con origin_iata_meta pero origin_iata no, asumimos que la URL
-    #   de booking está "al revés" (CPT→LGW) y la invertimos a LGW→CPT.
+    # - normal case: origin_iata == origin_iata_meta → fill in the name
+    # - reversed case (like the Norse to CPT example): if destination_iata
+    #   matches origin_iata_meta but origin_iata does not, assume the booking
+    #   URL is "backwards" (CPT→LGW) and reverse it to LGW→CPT.
     if origin_name_meta and origin_iata_meta:
         for it in itineraries:
             o_iata = it.get("origin_iata")
             d_iata = it.get("destination_iata")
 
-            # Caso 1: el origen ya coincide con el meta → sólo ponemos nombre
+            # Case 1: origin already matches the meta → just fill in the name
             if o_iata == origin_iata_meta:
                 if not it.get("origin"):
                     it["origin"] = origin_name_meta
                 continue
 
-            # Caso 2: el destino coincide con el meta pero el origen no →
-            # interpretamos que el sentido está invertido y lo cambiamos.
+            # Case 2: destination matches the meta but origin does not →
+            # interpret the direction as reversed and swap it.
             if d_iata == origin_iata_meta and o_iata and d_iata:
-                # Guardamos el destino "real" (normalmente la ciudad principal
-                # del artículo, p.ej. "Cape Town") antes de tocar nada.
+                # Save the "real" destination (typically the article's main city,
+                # e.g. "Cape Town") before modifying anything.
                 dest_city = it.get("destination")
                 orig_city = it.get("origin")
 
-                # Invertir códigos IATA
+                # Swap IATA codes
                 it["origin_iata"], it["destination_iata"] = d_iata, o_iata
 
-                # Origen pasa a ser el meta oficial (p.ej. "London Gatwick")
+                # Origin becomes the official meta value (e.g. "London Gatwick")
                 it["origin"] = origin_name_meta
 
-                # Destino: preferimos la ciudad que ya estaba en destination,
-                # y si no, usamos el antiguo origen si existía.
+                # Destination: prefer the city that was already in destination;
+                # otherwise use the former origin if one existed.
                 if dest_city and dest_city != origin_name_meta:
                     it["destination"] = dest_city
                 elif orig_city and orig_city != origin_name_meta:
                     it["destination"] = orig_city
 
-    # Fallback adicional: si sólo hay un itinerario y el título del
-    # artículo contiene un patrón reconocible (p.ej. "... from Budapest"),
-    # usamos esa información para rellenar origen/destino si siguen vacíos.
+    # Additional fallback: if there is only one itinerary and the article title
+    # contains a recognisable pattern (e.g. "... from Budapest"),
+    # use that information to fill in origin/destination if they are still empty.
     if len(itineraries) == 1:
         it = itineraries[0]
         if isinstance(it, dict):
@@ -1484,11 +1528,10 @@ def _parse_travel_dealz_soup(soup: BeautifulSoup, url: str) -> Dict[str, Any]:
             if d_title and not it.get("destination"):
                 it["destination"] = d_title
 
-    # Fallback para múltiples itinerarios con el mismo par de IATA:
-    # si todas las rutas comparten origin_iata y destination_iata y
-    # el título permite extraer un patrón "from X" → "to Y", usamos
-    # esos nombres legibles para rellenar origin/destination cuando
-    # aún estén vacíos.
+    # Fallback for multiple itineraries sharing the same IATA pair:
+    # if all routes share origin_iata and destination_iata and the title
+    # yields a recognisable "from X" → "to Y" pattern, use those readable
+    # names to fill in origin/destination where they are still empty.
     if len(itineraries) > 1 and title:
         o_title, d_title = _extract_route_from_title(title or "")
         if o_title or d_title:
@@ -1503,13 +1546,13 @@ def _parse_travel_dealz_soup(soup: BeautifulSoup, url: str) -> Dict[str, Any]:
                 if d_title and len(all_d_iata) == 1 and not it.get("destination"):
                     it["destination"] = d_title
 
-    # Completar nombres de ciudad a partir de códigos IATA si aún faltan
+    # Fill in city names from IATA codes where they are still missing
     for it in itineraries:
         if not isinstance(it, dict):
             continue
         resolved_origin = _resolve_city_from_iata(it.get("origin"), it.get("origin_iata"))
         if resolved_origin:
-            # Si el nombre existente no coincide con el IATA, priorizamos el mapeo
+            # If the existing name does not match the IATA mapping, prefer the mapping
             if it.get("origin") and _normalize_city_name(str(it.get("origin"))) != _normalize_city_name(resolved_origin):
                 it["origin"] = resolved_origin
             elif not it.get("origin"):
@@ -1522,7 +1565,7 @@ def _parse_travel_dealz_soup(soup: BeautifulSoup, url: str) -> Dict[str, Any]:
             elif not it.get("destination"):
                 it["destination"] = resolved_dest
 
-    # Si no hemos identificado destinos globales, deducirlos de las rutas ya resueltas
+    # If no global destinations were identified, derive them from the already-resolved routes
     if not destinations:
         dests_from_itins: List[str] = []
         for it in itineraries:
@@ -1534,9 +1577,9 @@ def _parse_travel_dealz_soup(soup: BeautifulSoup, url: str) -> Dict[str, Any]:
         if dests_from_itins:
             destinations = dests_from_itins
 
-    # Fallback de precio: si todos los itinerarios tienen price == None,
-    # intentamos extraer un precio "global" del cuerpo del artículo
-    # (p.ej. "starting at just €1,312 ...") y lo aplicamos a todos.
+    # Price fallback: if all itineraries have price == None, try to extract a
+    # "global" price from the article body (e.g. "starting at just €1,312 ...")
+    # and apply it to all of them.
     if itineraries and all(it.get("price") is None for it in itineraries):
         body = soup.find("article") or soup.find("main") or soup.body
         if body:
@@ -1559,6 +1602,7 @@ def _parse_travel_dealz_soup(soup: BeautifulSoup, url: str) -> Dict[str, Any]:
         "expires_in": expires_in,
         "miles": miles_value,
         "cabin_baggage": cabin_baggage,
+        "stops": stops_count,
         "itineraries": itineraries,
     }
 

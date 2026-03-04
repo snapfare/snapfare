@@ -21,6 +21,7 @@ frontend/dist/
 # Backend generated output (recreated on each pipeline run)
 backend/snippets/
 backend/html_dumps/
+backend/data/
 
 # IDE
 .idea/

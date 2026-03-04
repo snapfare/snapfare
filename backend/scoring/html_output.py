@@ -1,12 +1,11 @@
 import os
-import json
 from html import escape
 from typing import Dict, Any, List
 
 import pandas as pd
 
 from services.baggage_format import format_baggage_short_de
-from scoring.miles_utils import choose_best_program, filter_miles_programs_display, great_circle_miles
+from scoring.miles_utils import choose_best_program, great_circle_miles
 
 try:  # airportsdata is optional; if missing, we skip city lookups.
     import airportsdata  # type: ignore
@@ -29,9 +28,9 @@ except FileNotFoundError:
 
 try:
     df_airports_de = pd.read_csv("backend/scoring/data/airport_names_german.csv", dtype=str).fillna("")
-    # El CSV puede contener cabeceras duplicadas y códigos repetidos.
-    # - Ignoramos filas tipo "code,deutscher_Name" embebidas.
-    # - Preferimos la última aparición para permitir curación incremental.
+    # The CSV may contain duplicate headers and repeated codes.
+    # - We ignore rows like "code,deutscher_Name" embedded as data.
+    # - We prefer the last occurrence to allow incremental curation.
     if "code" in df_airports_de.columns:
         df_airports_de["code"] = df_airports_de["code"].astype(str).str.strip().str.upper()
         df_airports_de = df_airports_de[df_airports_de["code"].str.lower() != "code"]
@@ -41,9 +40,52 @@ except FileNotFoundError:
     AIRPORTS_DE = {}
 
 
+# Keywords identifying long-haul wide-body aircraft by model name substring.
+_LONGHAUL_KEYWORDS = {
+    "777", "787", "747", "767", "757",
+    "A350", "A380", "A330", "A340", "A300",
+    "Dreamliner", "Jumbo",
+}
+
+
 def aircraft_model(iata: str) -> str | None:
     rec = AIRCRAFT.get(iata.upper())
     return rec.get("Aircraft_Model") if rec else None
+
+
+def _is_longhaul_aircraft(name: str) -> bool:
+    """Return True if *name* matches a known long-haul wide-body aircraft."""
+    n = name.upper()
+    return any(kw.upper() in n for kw in _LONGHAUL_KEYWORDS)
+
+
+def filter_longhaul_aircraft(aircraft_str: str) -> str:
+    """From a potentially multi-segment aircraft string, keep only long-haul types.
+
+    Segments are assumed to be separated by '/', '+', or ','.
+    If no long-haul segment is identified, the original string is returned unchanged
+    to avoid an empty/uninformative output.
+
+    Examples:
+      "A321 / Boeing 777-300ER" -> "Boeing 777-300ER"
+      "A320, 777-300ER"         -> "777-300ER"
+      "Boeing 777-300ER"        -> "Boeing 777-300ER"
+      "A320 / A321"             -> "A320 / A321"  (no long-haul found -- keep all)
+    """
+    if not aircraft_str or aircraft_str in {"—", "-"}:
+        return aircraft_str
+
+    # Normalise separators: replace '+' and ',' with '/' before splitting
+    normalised = aircraft_str.replace("+", "/").replace(",", "/")
+    parts = [p.strip() for p in normalised.split("/") if p.strip()]
+    if len(parts) <= 1:
+        return aircraft_str
+
+    longhaul = [p for p in parts if _is_longhaul_aircraft(p)]
+    if longhaul:
+        return " / ".join(longhaul)
+    return aircraft_str  # fallback: show all if nothing matches
+
 
 def airlines(code: str) -> str | None:
     rec = AIRLINES.get(code.upper())
@@ -118,12 +160,22 @@ def _format_price_display(price: Any, currency: str) -> str:
     return f"ab {float(price):.0f} {cur}".strip()
 
 
-def _is_business_deal(deal: Dict[str, Any]) -> bool:
+def _cabin_prefix(deal: Dict[str, Any]) -> str:
+    """Return route prefix string based on cabin class.
+
+    Business → "BUSINESS: ", Premium Economy → "PREMIUM ECONOMY: ", Economy → "".
+    """
     cabin = str(deal.get("cabin_class") or "").strip().upper()
-    if cabin in {"BUSINESS", "J", "C"}:
-        return True
     title = str(deal.get("title") or "").lower()
-    return "business" in title
+    if cabin in {"BUSINESS", "J", "C"} or "business" in title:
+        return "BUSINESS: "
+    if cabin in {"PREMIUM ECONOMY", "PREMIUM_ECONOMY", "W", "P"} or "premium economy" in title:
+        return "PREMIUM ECONOMY: "
+    return ""
+
+
+def _is_business_deal(deal: Dict[str, Any]) -> bool:
+    return _cabin_prefix(deal) == "BUSINESS: "
 
 def offer_to_html(offer: Dict[str, Any]) -> str:
     """
@@ -153,8 +205,8 @@ def offer_to_html(offer: Dict[str, Any]) -> str:
     itins = offer.get("itineraries") or []
     first_seg = _first_segment(itins)
 
-    # Para la “ruta” usamos el primer itinerario (outbound):
-    # origen = primera salida, destino = última llegada del primer itin.
+    # For the “route” we use the first itinerary (outbound):
+    # origin = first departure, destination = last arrival of the first itinerary.
     first_itin = (itins or [{}])[0] if isinstance(itins, list) else {}
     first_itin_segs = (first_itin or {}).get("segments") or []
     last_outbound_seg = (first_itin_segs[-1] if first_itin_segs else {})
@@ -335,29 +387,6 @@ def offer_to_html(offer: Dict[str, Any]) -> str:
 
     return html
 
-
-def _parse_json_dict(val: Any) -> Dict[str, Any]:
-    """Parse a JSON object from a Supabase JSON/JSONB field.
-
-    Depending on the client/table schema, Supabase may return JSONB as a dict
-    or as a serialized JSON string.
-    """
-
-    if isinstance(val, dict):
-        return val
-    if isinstance(val, str):
-        s = val.strip()
-        if not s:
-            return {}
-        # Fast reject: we only care about JSON objects.
-        if not (s.startswith("{") and s.endswith("}")):
-            return {}
-        try:
-            parsed = json.loads(s)
-            return parsed if isinstance(parsed, dict) else {}
-        except Exception:
-            return {}
-    return {}
 
 def build_full_html(offer_htmls: List[str], title: str = "Flight Deals") -> str:
     """Return a complete HTML document string containing the provided offer snippets."""
@@ -540,29 +569,25 @@ def deal_to_newsletter_row(deal: Dict[str, Any]) -> str:
         return len(v) == 3 and v.isalpha()
 
     def _resolve_place(city_val: str, code: str, fallback_label: str) -> str:
-        city = (city_val or "").strip()
         code_u = (code or "").strip().upper()
+        resolved_city = ""
 
-        # Priority 1: use explicit city from deal if it's not just the code.
-        if city and (not code_u or city.strip().upper() != code_u):
-            resolved_city = city
-        else:
-            # Priority 2: if we have an IATA, try German CSV mapping.
-            resolved_city = ""
-            if code_u and len(code_u) == 3:
-                mapped = airports_de(code_u)
-                if mapped:
-                    resolved_city = mapped
+        # Priority 1: German CSV (curated correct names like "Zürich").
+        if code_u and len(code_u) == 3:
+            mapped = airports_de(code_u)
+            if mapped:
+                resolved_city = mapped
 
-            # Priority 2b: fall back to airportsdata (city/name) if available.
-            if not resolved_city and code_u and len(code_u) == 3:
-                rec = airports.get(code_u)
-                if isinstance(rec, dict):
-                    resolved_city = str(rec.get("city") or rec.get("name") or "").strip()
+        # Priority 2: airportsdata library.
+        if not resolved_city and code_u and len(code_u) == 3:
+            rec = airports.get(code_u)
+            if isinstance(rec, dict):
+                resolved_city = str(rec.get("city") or rec.get("name") or "").strip()
 
-            # Priority 3: fall back to deal city (even if it's code) or IATA.
-            if not resolved_city:
-                resolved_city = city if city else code_u
+        # Priority 3: raw scraped city name (fallback only).
+        if not resolved_city:
+            city = (city_val or "").strip()
+            resolved_city = city if city else code_u
 
         # Format label. Avoid things like "SJU (SJU)".
         if code_u and resolved_city and resolved_city.upper() != code_u:
@@ -578,20 +603,14 @@ def deal_to_newsletter_row(deal: Dict[str, Any]) -> str:
 
     route_text = f"{origin_label} → {dest_label}"
     # Two-line version as in the example: origin on first line, dest on second
-    prefix = "BUSINESS: " if _is_business_deal(deal) else ""
+    prefix = _cabin_prefix(deal)
     route_html = f"{escape(prefix + origin_label)} →<br>{escape(dest_label)}"
 
     airline = str(deal.get("airline") or "").strip() or ""
     baggage_text = format_baggage_short_de(deal) or "Kein Gepäck inklusive"
 
-    aircraft = str(deal.get("aircraft") or "").strip() or "—"
-    llm_fields = _parse_json_dict(deal.get("llm_enriched_fields"))
-    mpd = llm_fields.get("miles_programs_display")
-    mpd_filtered = None
-    if mpd not in (None, ""):
-        mpd_filtered = filter_miles_programs_display(str(mpd), airline)
-
-    miles_raw = mpd_filtered if mpd_filtered not in (None, "") else deal.get("miles")
+    aircraft = filter_longhaul_aircraft(str(deal.get("aircraft") or "").strip() or "—")
+    miles_raw = deal.get("miles")
 
     # If we can infer a valid program set for the airline, prefer a single best-program
     # estimate over ambiguous/invalid multi-program strings.
@@ -611,19 +630,25 @@ def deal_to_newsletter_row(deal: Dict[str, Any]) -> str:
             is_missing = not miles_text or miles_text in {"—", "-"}
             looks_numeric_only = miles_text.isdigit()
             if is_missing or is_ambiguous or looks_numeric_only:
-                miles_raw = f"{best_est:,}".replace(",", "'") + f" · {best_prog}"
+                # Format: "Program Name · 3'149"
+                miles_raw = f"{best_prog} · " + f"{best_est:,}".replace(",", "'")
     miles = "—"
     if miles_raw not in (None, ""):
         try:
             miles_int = int(float(str(miles_raw).strip()))
+            # Pure integer → format with apostrophe (no program name known)
             miles = f"{miles_int:,}".replace(",", "'")
         except Exception:
             miles = str(miles_raw).strip() or "—"
 
+    # Prefer pre-computed German travel period display string
+    travel_period = str(deal.get("travel_period_display") or "").strip()
     date_out = deal.get("date_out") or deal.get("departure_date")
     date_in = deal.get("date_in") or deal.get("return_date")
     date_range = str(deal.get("date_range") or "").strip()
-    if date_out and date_in:
+    if travel_period:
+        dates_text = travel_period
+    elif date_out and date_in:
         dates_text = f"{date_out} – {date_in}"
     elif date_range:
         dates_text = date_range
@@ -634,13 +659,12 @@ def deal_to_newsletter_row(deal: Dict[str, Any]) -> str:
     currency = str(deal.get("currency") or "CHF").strip()
     price_text = _format_price_display(price, currency)
 
-    link = str(deal.get("booking_url") or deal.get("link") or "#").strip() or "#"
+    # CTA: prefer booking_url, then article link, then Skyscanner (for Duffel deals with no link)
+    link = str(deal.get("booking_url") or deal.get("link") or deal.get("skyscanner_url") or "#").strip() or "#"
 
+    # Image: prefer stored image field (always Unsplash from pipeline); fall back to live fetch
     img = str(deal.get("image") or deal.get("image_url") or "").strip()
-    dest_photo = airport_photo_url(dest_iata)
-    if dest_photo:
-        img = dest_photo
-    elif not img:
+    if not img:
         img = _unsplash_fallback_image(dest_label or dest_iata or "destination")
 
     # Escape values for safe HTML insertion (except route_html which already
@@ -654,6 +678,13 @@ def deal_to_newsletter_row(deal: Dict[str, Any]) -> str:
     dates_e = escape(dates_text)
     price_e = escape(price_text)
     link_e = escape(link)
+    skyscanner_url = str(deal.get("skyscanner_url") or "").strip()
+    skyscanner_btn = (
+        f'          <a href="{escape(skyscanner_url)}" target="_blank"'
+        ' style="display:inline-block;margin-top:6px;background:#0770e3;color:#ffffff;text-decoration:none;'
+        'font-family:Inter,Segoe UI,Arial,sans-serif;font-size:12px;font-weight:600;padding:8px 14px;border-radius:12px;'
+        'border:1px solid rgba(255,255,255,0.06);">&#128269; Skyscanner</a>'
+    ) if skyscanner_url else ""
 
     img_block = ""
     if img_e:
@@ -707,7 +738,7 @@ def deal_to_newsletter_row(deal: Dict[str, Any]) -> str:
         "font-family:Inter,Segoe UI,Arial,sans-serif;font-size:13px;font-weight:700;padding:10px 18px;border-radius:12px;"
         "border:1px solid rgba(255,255,255,0.06);\">"
         "            Deal ansehen"
-        "          </a>"
+        f"          </a>{skyscanner_btn}"
         "        </div>"
         "      </td>"
         "    </tr>"
@@ -715,3 +746,44 @@ def deal_to_newsletter_row(deal: Dict[str, Any]) -> str:
         "</td></tr>"
     )
     return card_html
+
+
+# Alias: preferred name going forward
+render_deal_card = deal_to_newsletter_row
+
+
+def build_deals_html(
+    deals: List[Dict[str, Any]],
+    max_items: int | None = None,
+) -> str:
+    """Compose standalone deal cards into a minimal HTML fragment.
+
+    Produces only the card rows — no newsletter intro, footer, or wrapper.
+    The fragment can be embedded directly into any page or email template.
+    """
+    if not deals:
+        return "<!-- No deals -->"
+    items = deals[:max_items] if max_items and max_items > 0 else deals
+
+    css = (
+        "<style>"
+        "@media screen and (max-width:600px){"
+        ".container{width:100%!important}"
+        ".stack{display:block!important;width:100%!important;text-align:center!important}"
+        ".card-pad{padding:20px 16px!important}"
+        ".deal-img{display:block!important;margin:0 auto!important}"
+        ".m-bound{width:320px!important;margin:0 auto!important;text-align:center!important}"
+        ".cta{display:inline-block!important;width:auto!important;min-width:180px!important;"
+        "max-width:240px!important;margin:12px auto 0!important;text-align:center!important}}"
+        "a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important}"
+        "</style>"
+    )
+
+    rows = "".join(render_deal_card(d) for d in items)
+    return (
+        f"{css}"
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"'
+        ' style="background:#0b1120;border-collapse:collapse;">'
+        f"{rows}"
+        "</table>"
+    )

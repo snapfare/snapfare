@@ -1,17 +1,19 @@
+"""Legacy dev entry-point — now delegates to the Duffel pipeline.
+
+Run from the repo root:
+  python -m backend.scoring.app
+"""
 from pathlib import Path
 from dotenv import load_dotenv
 from datetime import datetime
 from typing import List
-from amadeus_api import get_flight_offers
-from scoring import get_best_amadeus_flights
-from html_output import offer_to_html, build_full_html
+from scoring.duffel_api import get_flight_offers
+from scoring.scoring import get_best_amadeus_flights
+from scoring.html_output import offer_to_html, build_full_html
 
 
 def save_offers_html(offer_htmls: List[str], out_file: Path | str = Path("HTML_output") / "offers.html", overwrite: bool = True) -> Path:
-    """
-    Save the combined HTML to `out_file`. Returns the path written.
-    If overwrite is False and the file exists, a timestamped filename will be used.
-    """
+    """Save the combined HTML to `out_file`. Returns the path written."""
     out = Path(out_file)
     out.parent.mkdir(parents=True, exist_ok=True)
 
@@ -24,19 +26,21 @@ def save_offers_html(offer_htmls: List[str], out_file: Path | str = Path("HTML_o
     return out
 
 if __name__ == "__main__":
-    load_dotenv(dotenv_path=str(Path(__file__).parent / ".env"))
-    amadeus_flights = get_flight_offers(
+    import os
+    load_dotenv(dotenv_path=str(Path(__file__).parent.parent / ".env"))
+    access_token = os.getenv("DUFFEL_API_KEY", "")
+    duffel_flights = get_flight_offers(
         origin_location_code="ZRH",
         destination_location_code="LAX",
         departure_date="2025-12-01",
-        returnDate="2025-12-31",
-        duration="7,14,21",
-        adults=1
+        return_date="2025-12-31",
+        adults=1,
+        access_token=access_token,
     )
-    top_5_amadeus_flights = get_best_amadeus_flights(amadeus_flights)
+    top_5 = get_best_amadeus_flights(duffel_flights)
 
     offer_htmls = []
-    for idx, flight in enumerate(top_5_amadeus_flights, start=1):
+    for flight in top_5:
         html = offer_to_html(flight.get("offer"))
         offer_htmls.append(html)
 

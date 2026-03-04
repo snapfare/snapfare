@@ -7,16 +7,16 @@ from database.supabase_db import save_deals
 def ingest_travel_dealz(limit: int = 100) -> Dict[str, Any]:
     """Scrape travel-dealz.com and .de and persist minimal fields to Supabase.
 
-    - Usa los scrapers puros (sin tocar travel_dealz.py).
-    - Reduce cada deal a: title, price, link.
-    - Inserta en la tabla agregada 'deals' de Supabase mediante save_deals().
+    - Uses the pure scrapers (without touching travel_dealz.py).
+    - Reduces each deal to: title, price, link.
+    - Inserts into the aggregated 'deals' table in Supabase via save_deals().
 
-    Devuelve siempre un diccionario con:
+    Always returns a dictionary with:
     {
         "status": "ok" | "disabled" | "error",
-        "scraped": int,           # deals totales scrapeados (antes de filtrar campos)
-        "saved": int | None,      # deals enviados a Supabase (o None si no se insertó),
-        "supabase": Any           # respuesta cruda de save_deals()
+        "scraped": int,           # total deals scraped (before filtering fields)
+        "saved": int | None,      # deals sent to Supabase (or None if not inserted),
+        "supabase": Any           # raw response from save_deals()
     }
     """
     deals_com: List[Dict[str, Any]] = get_deals(limit=limit)
@@ -24,7 +24,7 @@ def ingest_travel_dealz(limit: int = 100) -> Dict[str, Any]:
 
     all_deals = deals_com + deals_de
 
-    # Mantener solo los campos mínimos requeridos por ahora
+    # Keep only the minimum required fields for now
     payload: List[Dict[str, Any]] = [
         {
             "title": d.get("title"),

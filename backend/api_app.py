@@ -15,10 +15,10 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 # Import services and scrapers
 try:
-    from services.amadeus_service import search_flights
+    from services.duffel_service import search_flights
 except Exception:
     def search_flights(*args, **kwargs):
-        return {"status": "disabled", "reason": "Amadeus not configured"}
+        return {"status": "disabled", "reason": "Duffel not configured"}
 
 try:
     from services.openai_service import generate_suggestions
@@ -80,15 +80,15 @@ ENABLED_SOURCES = _parse_scraping_sources()
 
 
 def _parse_source_param(raw: str | None) -> set[str] | None:
-    """Interpretar el parámetro de consulta `source`.
+    """Parse the `source` query parameter.
 
-    Acepta tanto códigos numéricos sencillos como nombres:
+    Accepts both simple numeric codes and names:
       - "1", "travel-dealz"  -> {"travel-dealz"}
       - "2", "secretflying"  -> {"secretflying"}
       - "all", "both", "*" -> {"travel-dealz", "secretflying"}
 
-    Devuelve None si no se reconoce, para caer al comportamiento por defecto
-    basado en SCRAPING_URL.
+    Returns None if not recognized, to fall back to the default behavior
+    based on SCRAPING_URL.
     """
 
     if not raw:
@@ -103,7 +103,7 @@ def _parse_source_param(raw: str | None) -> set[str] | None:
         return {"travel-dealz", "secretflying"}
     return None
 
-# Configuración de scraping vía variables de entorno
+# Scraping configuration via environment variables
 DEFAULT_DEALS_LIMIT = int(os.getenv("DEALS_DEFAULT_LIMIT", "10"))
 MAX_DEALS_LIMIT = int(os.getenv("DEALS_MAX_LIMIT", "200"))
 PERSIST_DEFAULT = os.getenv("DEALS_PERSIST_DEFAULT", "true").strip().lower() in {"1", "true", "yes", "on"}
@@ -123,7 +123,7 @@ async def index(request: Request):
 async def deals(
     limit: int = Query(DEFAULT_DEALS_LIMIT, ge=1, le=MAX_DEALS_LIMIT),
     persist: bool = Query(PERSIST_DEFAULT),
-    source: str | None = Query(None, description="Fuente: 1/travel-dealz, 2/secretflying, all/both"),
+    source: str | None = Query(None, description="Source: 1/travel-dealz, 2/secretflying, all/both"),
 ):
     """Scrape and return flight deals, optionally persist to Supabase."""
     override_sources = _parse_source_param(source)
@@ -136,7 +136,7 @@ async def deals(
 
     data = []
     if "travel-dealz" in sources_enabled:
-        # .com y .de
+        # .com and .de
         td_com = get_travel_dealz(limit=limit)
         td_de = get_travel_dealz_de(limit=limit)
         data.extend(td_com)
@@ -147,7 +147,7 @@ async def deals(
         data.extend(sf)
         print(f"[deals] SecretFlying: +{len(sf)} deals (total={len(data)})")
 
-    # Respetar el límite total de deals expuestos/insertados
+    # Respect the total limit of exposed/inserted deals
     if len(data) > limit:
         data = data[:limit]
         print(f"[deals] Truncated to global limit={limit}")
@@ -182,14 +182,14 @@ async def deals(
 
 @app.get("/deals/saved")
 async def deals_saved(limit: int = Query(10, ge=1, le=100)):
-    """Retrieve saved deals from Supabase database (tabla deals)."""
+    """Retrieve saved deals from Supabase database (deals table)."""
     result = get_saved_deals("deals", limit=limit)
     return JSONResponse(content=result)
 
 
 @app.get("/deals/saved/secretflying")
 async def deals_saved_secretflying(limit: int = Query(10, ge=1, le=100)):
-    """Retrieve saved SecretFlying deals from Supabase database (tabla deals)."""
+    """Retrieve saved SecretFlying deals from Supabase database (deals table)."""
     result = get_saved_deals("deals", limit=limit)
     return JSONResponse(content=result)
 
@@ -213,7 +213,7 @@ async def deals_pipeline(
     limit: int = Query(DEFAULT_DEALS_LIMIT, ge=1, le=MAX_DEALS_LIMIT),
     persist: bool = Query(PERSIST_DEFAULT),
     enrich: bool | None = Query(None),
-    source: str | None = Query(None, description="Fuente: 1/travel-dealz, 2/secretflying, all/both"),
+    source: str | None = Query(None, description="Source: 1/travel-dealz, 2/secretflying, all/both"),
 ):
     """Run the structured deals pipeline (scrape, score, enrich, HTML)."""
     override_sources = _parse_source_param(source)
@@ -232,7 +232,7 @@ async def deals_pipeline_html(
     limit: int = Query(DEFAULT_DEALS_LIMIT, ge=1, le=MAX_DEALS_LIMIT),
     persist: bool = Query(False),
     enrich: bool | None = Query(None),
-    source: str | None = Query(None, description="Fuente: 1/travel-dealz, 2/secretflying, all/both"),
+    source: str | None = Query(None, description="Source: 1/travel-dealz, 2/secretflying, all/both"),
 ):
     """Return only the HTML snippet from the deals pipeline.
 

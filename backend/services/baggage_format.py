@@ -51,8 +51,30 @@ def _to_float(val: Any) -> Optional[float]:
     return None
 
 
+def _prepend_hand_luggage(checked_str: str, deal: Dict[str, Any]) -> str:
+    """Prepend hand/cabin luggage kg to a checked-baggage display string.
+
+    Looks up the hand luggage kg from airline+cabin defaults, then returns
+    e.g. "8 kg + 1×23 kg".  If no hand luggage default is found, returns
+    checked_str unchanged.
+    """
+    # Pipeline stores airline as a full name; we use the stored hand_luggage_kg field if present.
+    hand_kg = _to_int(deal.get("hand_luggage_kg"))
+    if hand_kg is None:
+        cabin = deal.get("cabin_class")
+        # Try to look up by stored IATA code (airline_iata field may exist)
+        iata = str(deal.get("airline_iata") or "").strip().upper()
+        defaults = get_baggage_defaults(iata if iata else None, cabin)
+        hand_kg = defaults.get("hand_luggage_kg", 8)
+    if hand_kg and hand_kg > 0:
+        return f"{hand_kg} kg + {checked_str}"
+    return checked_str
+
+
 def format_baggage_short_de(deal: Dict[str, Any]) -> Optional[str]:
     """Return a short baggage allowance string for UI snippets.
+
+    Format: 'hand_kg kg + pieces×checked_kg kg'  (e.g. '8 kg + 1×23 kg')
 
     - Prefer structured numeric fields (pieces/kg) when available.
     - If a free-text summary is present, extract only the numeric kg info.
@@ -66,7 +88,6 @@ def format_baggage_short_de(deal: Dict[str, Any]) -> Optional[str]:
 
     raw_texts = [
         deal.get("baggage_allowance_display"),
-        deal.get("cabin_baggage"),
         deal.get("baggage_summary"),
     ]
 
@@ -109,11 +130,11 @@ def format_baggage_short_de(deal: Dict[str, Any]) -> Optional[str]:
                 compact2.append(p)
                 seen2.add(p)
 
-        parsed = " + ".join(compact2)
+        checked_str = " + ".join(compact2)
         # Also respect explicit 'no checked baggage' wording.
         if _NO_BAGGAGE_PAT.search(text):
-            return f"{parsed} (ohne Aufgabegepäck)"
-        return parsed
+            return f"{checked_str} (ohne Aufgabegepäck)"
+        return _prepend_hand_luggage(checked_str, deal)
 
     # Detect "no checked baggage" from any available text field.
     for raw in raw_texts:
@@ -130,16 +151,16 @@ def format_baggage_short_de(deal: Dict[str, Any]) -> Optional[str]:
     kg_val = _to_float(deal.get("baggage_allowance_kg"))
     if pieces and kg_val and pieces > 0 and kg_val > 0:
         kg_int = int(kg_val) if float(kg_val).is_integer() else kg_val
-        parsed = f"{pieces}×{kg_int} kg"
+        checked_str = f"{pieces}×{kg_int} kg"
         if no_checked_baggage:
-            return f"{parsed} (ohne Aufgabegepäck)"
-        return parsed
+            return f"{checked_str} (ohne Aufgabegepäck)"
+        return _prepend_hand_luggage(checked_str, deal)
     if kg_val and kg_val > 0:
         kg_int = int(kg_val) if float(kg_val).is_integer() else kg_val
-        parsed = f"{kg_int} kg"
+        checked_str = f"{kg_int} kg"
         if no_checked_baggage:
-            return f"{parsed} (ohne Aufgabegepäck)"
-        return parsed
+            return f"{checked_str} (ohne Aufgabegepäck)"
+        return _prepend_hand_luggage(checked_str, deal)
 
     for raw in raw_texts:
         if not raw:
@@ -150,8 +171,6 @@ def format_baggage_short_de(deal: Dict[str, Any]) -> Optional[str]:
 
         # Strip parenthetical notes like fees.
         text = re.sub(r"\s*\([^)]*\)", "", text).strip()
-
-        # pieces×kg handled above (preferred path)
 
         kgs = [k.group("kg").replace(",", ".") for k in _KG_PAT.finditer(text)]
         if kgs:
@@ -174,23 +193,145 @@ def format_baggage_short_de(deal: Dict[str, Any]) -> Optional[str]:
                     seen.add(kg_disp)
 
             if len(compact) == 1:
-                parsed = f"{compact[0]} kg"
+                checked_str = f"{compact[0]} kg"
             else:
-                parsed = " + ".join([f"{c} kg" for c in compact])
+                checked_str = " + ".join([f"{c} kg" for c in compact])
             if mentions_cabin and len(compact) == 1:
-                parsed = f"{parsed} Handgepäck"
+                checked_str = f"{checked_str} Handgepäck"
 
             if no_checked_baggage or is_cabin_only:
-                return f"{parsed} (ohne Aufgabegepäck)"
-            return parsed
+                return f"{checked_str} (ohne Aufgabegepäck)"
+            return _prepend_hand_luggage(checked_str, deal)
 
         if _NO_BAGGAGE_PAT.search(text):
             return "Kein Aufgabegepäck"
 
     if no_checked_baggage:
-        # The deal says there is no checked baggage, but we couldn't extract
-        # a reliable numeric cabin allowance.
         return "Kein Aufgabegepäck"
 
-    # No reliable baggage info
-    return None
+    # Fall back to hard-coded defaults by cabin class
+    return _default_baggage_by_cabin(deal.get("cabin_class"))
+
+
+# Airline + cabin-class specific baggage defaults.
+# Key: (airline_iata_upper, cabin_key_lower) → (hand_kg, checked_pieces, checked_kg)
+# Use ("*", cabin_key) as fallback when airline not listed.
+_AIRLINE_CABIN_BAGGAGE: dict[tuple, tuple] = {
+    # (airline_iata, cabin_class_lower) → (hand_kg, checked_pieces, checked_kg)
+    ("BA", "economy"):         (8,  0,  0),   # BA Economy: hand bag only, no checked included
+    ("BA", "premium economy"): (12, 1, 23),
+    ("BA", "business"):        (12, 2, 32),
+    ("BA", "first"):           (14, 3, 32),
+    ("LH", "economy"):         (8,  1, 23),
+    ("LH", "premium economy"): (8,  2, 23),
+    ("LH", "business"):        (12, 2, 32),
+    ("LH", "first"):           (14, 3, 32),
+    ("LX", "economy"):         (8,  1, 23),
+    ("LX", "premium economy"): (8,  2, 23),
+    ("LX", "business"):        (12, 2, 32),
+    ("LX", "first"):           (14, 3, 32),
+    ("OS", "economy"):         (8,  1, 23),
+    ("OS", "business"):        (12, 2, 32),
+    ("EK", "economy"):         (7,  2, 23),
+    ("EK", "business"):        (14, 2, 32),
+    ("EK", "first"):           (14, 3, 32),
+    ("TK", "economy"):         (8,  1, 30),
+    ("TK", "business"):        (12, 2, 32),
+    ("QR", "economy"):         (7,  1, 23),
+    ("QR", "premium economy"): (10, 1, 23),
+    ("QR", "business"):        (14, 2, 32),
+    ("QR", "first"):           (14, 3, 32),
+    ("EY", "economy"):         (7,  1, 23),
+    ("EY", "business"):        (14, 2, 32),
+    ("SQ", "economy"):         (7,  1, 23),
+    ("SQ", "business"):        (14, 2, 32),
+    ("AF", "economy"):         (12, 1, 23),
+    ("AF", "business"):        (12, 2, 32),
+    ("KL", "economy"):         (12, 1, 23),
+    ("KL", "business"):        (12, 2, 32),
+    # Generic fallbacks by cabin only
+    ("*", "economy"):          (8,  1, 23),
+    ("*", "premium economy"):  (10, 1, 23),
+    ("*", "business"):         (12, 2, 32),
+    ("*", "first"):            (14, 3, 32),
+}
+
+
+def _cabin_key(cabin_class: Any) -> str:
+    """Normalize cabin_class to lowercase key used in baggage lookup."""
+    c = (cabin_class or "").strip().upper()
+    if c in {"BUSINESS", "J", "C", "D", "Z", "R"}:
+        return "business"
+    if c in {"PREMIUM ECONOMY", "PREMIUM_ECONOMY", "W", "P"}:
+        return "premium economy"
+    if c in {"FIRST", "F"}:
+        return "first"
+    return "economy"
+
+
+def get_baggage_defaults(airline_iata: Optional[str], cabin_class: Any) -> Dict[str, Any]:
+    """Return structured baggage defaults for a given airline + cabin.
+
+    Returns a dict with keys:
+      baggage_included (bool), baggage_pieces_included (int),
+      baggage_allowance_kg (float), hand_luggage_kg (int)
+    """
+    code = (airline_iata or "").strip().upper()
+    cabin = _cabin_key(cabin_class)
+
+    hand_kg, checked_pieces, checked_kg = (
+        _AIRLINE_CABIN_BAGGAGE.get((code, cabin))
+        or _AIRLINE_CABIN_BAGGAGE.get(("*", cabin))
+        or (8, 1, 23)
+    )
+    return {
+        "baggage_included": checked_pieces > 0,
+        "baggage_pieces_included": checked_pieces,
+        "baggage_allowance_kg": int(checked_kg) if checked_kg > 0 else 0,
+        "hand_luggage_kg": hand_kg,
+    }
+
+
+# Default baggage allowances per cabin class (German display strings).
+# Kept for backward compatibility but format_baggage_short_de now uses structured data.
+_CABIN_BAGGAGE_DEFAULTS: dict[str, str] = {
+    "economy": "1×23 kg",
+    "premium economy": "2×23 kg",
+    "business": "2×32 kg",
+    "first": "3×32 kg",
+}
+
+
+def _default_baggage_by_cabin(cabin_class: Any) -> Optional[str]:
+    """Return the cabin-class default baggage string, or None if cabin is unknown."""
+    cabin = (cabin_class or "").strip().upper()
+    airline = None  # no airline context available at this point
+    if cabin in {"BUSINESS", "J", "C", "D", "Z"}:
+        cabin_norm = "business"
+    elif cabin in {"PREMIUM ECONOMY", "PREMIUM_ECONOMY", "W", "P"}:
+        cabin_norm = "premium economy"
+    elif cabin in {"FIRST", "F"}:
+        cabin_norm = "first"
+    elif cabin in {"ECONOMY", "Y", "M", "H", "K", "L", "Q", "T", "V", "X", "B", "E", "N", "O", "S"}:
+        cabin_norm = "economy"
+    else:
+        return None
+    defaults = get_baggage_defaults(airline, cabin_norm)
+    return _fmt_baggage(
+        defaults["hand_luggage_kg"],
+        defaults["baggage_pieces_included"],
+        int(defaults["baggage_allowance_kg"]),
+        defaults["baggage_included"],
+    )
+
+
+def _fmt_baggage(hand_kg: int, checked_pieces: int, checked_kg: int, baggage_included: bool) -> str:
+    """Format a baggage display string: 'hand_kg kg + pieces×checked_kg kg'."""
+    if not baggage_included or checked_pieces == 0 or checked_kg == 0:
+        if hand_kg > 0:
+            return f"{hand_kg} kg Handgepäck"
+        return "Kein Aufgabegepäck"
+    checked_str = f"{checked_pieces}×{checked_kg} kg"
+    if hand_kg > 0:
+        return f"{hand_kg} kg + {checked_str}"
+    return checked_str

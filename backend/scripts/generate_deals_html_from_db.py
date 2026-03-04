@@ -150,23 +150,25 @@ def _rows_to_deals(rows: List[Dict[str, Any]], table: str) -> List[Dict[str, Any
             "price": price,
             "currency": currency,
             "link": link,
+            "booking_url": row.get("booking_url"),
+            "skyscanner_url": row.get("skyscanner_url"),
             "source": source,
             "score": score,
-            # Optional extra fields (not currently used by render_html_snippet
-            # but kept for future extensions):
-            "image_url": row.get("image"),
+            "image": row.get("image"),
             "origin": row.get("origin"),
             "destination": row.get("destination"),
-            "miles": row.get("miles") or row.get("miles_estimate"),
+            "origin_iata": row.get("origin_iata"),
+            "destination_iata": row.get("destination_iata"),
+            "airline": row.get("airline"),
+            "aircraft": row.get("aircraft"),
             "cabin_class": row.get("cabin_class"),
-            "flight": row.get("flight"),
-            "llm_enriched_fields": _parse_json_dict(row.get("llm_enriched_fields")),
-            # Campos para mostrar duración y equipaje en el snippet
+            "stops": row.get("stops"),
+            "miles": row.get("miles"),
             "flight_duration_minutes": row.get("flight_duration_minutes"),
             "flight_duration_display": row.get("flight_duration_display"),
-            "baggage_allowance_display": row.get("baggage_allowance_display")
-            or row.get("cabin_baggage")
-            or row.get("baggage_summary"),
+            "baggage_included": row.get("baggage_included"),
+            "baggage_pieces_included": row.get("baggage_pieces_included"),
+            "baggage_allowance_kg": row.get("baggage_allowance_kg"),
         }
         deals.append(deal)
 

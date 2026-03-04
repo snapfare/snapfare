@@ -8,11 +8,6 @@ from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 
-from scoring.miles_utils import (
-    choose_best_program,
-    great_circle_miles,
-    _fmt_miles_apostrophe as _fmt_miles_apostrophe2,
-)
 
 try:  # Optional dependency (v1 client)
     from openai import OpenAI  # type: ignore
@@ -196,14 +191,13 @@ def _call_openai_fill_missing_batch(items: List[Dict[str, Any]]) -> Dict[int, Di
             ),
 
             "Return JSON with top-level key 'items' as a list.",
-            "For Amadeus items (source=amadeus) you may use provided computed distance to estimate miles.",
-            "If estimating baggage without explicit data, follow the item-level rules exactly.",
+            "Do not invent facts. If a field cannot be derived, return null.",
         ],
     }
 
     try:
         content = _openai_chat_completion(
-            model=os.getenv("DEALS_ENRICH_OPENAI_MODEL", "gpt-4.1-mini"),
+            model=os.getenv("DEALS_ENRICH_OPENAI_MODEL", "gpt-4o-mini"),
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
@@ -395,26 +389,14 @@ def _call_openai_structure(title: str, article_text: str) -> Dict[str, Any]:
         "article_text": article_text,
         "instructions": {
             "fields": [
-                # Flat / summary fields (optional)
                 "origin_city",
                 "origin_iata",
                 "destination_city",
                 "destination_iata",
                 "airline_name",
-                "baggage_summary",
-                "aircraft",
-                "miles_program",
-                "miles_estimate",
+                "cabin_class",
                 "travel_dates_summary",
                 "expires_in",
-                # Flight duration and baggage allowance for newsletter completeness
-                "flight_duration_minutes",
-                "flight_duration_display",
-                "baggage_included",
-                "baggage_pieces_included",
-                "baggage_allowance_kg",
-                "baggage_allowance_display",
-                # Detailed list of per-flight options
                 "itineraries",
             ]
         },
@@ -422,7 +404,7 @@ def _call_openai_structure(title: str, article_text: str) -> Dict[str, Any]:
 
     try:
         content = _openai_chat_completion(
-            model=os.getenv("DEALS_ENRICH_OPENAI_MODEL", "gpt-4.1-mini"),
+            model=os.getenv("DEALS_ENRICH_OPENAI_MODEL", "gpt-4o-mini"),
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
@@ -430,16 +412,13 @@ def _call_openai_structure(title: str, article_text: str) -> Dict[str, Any]:
                     "content": (
                         "Extract a JSON object with the following keys: "
                         "origin_city, origin_iata, destination_city, destination_iata, "
-                        "airline_name, baggage_summary, aircraft, miles_program, "
-                        "miles_estimate (number or null), travel_dates_summary, "
-                        "expires_in, flight_duration_minutes, flight_duration_display, "
-                        "baggage_included, baggage_pieces_included, baggage_allowance_kg, "
-                        "baggage_allowance_display, itineraries.\n\n"
+                        "airline_name, cabin_class (Economy/Business/Premium Economy/First or null), "
+                        "travel_dates_summary, expires_in, itineraries.\n\n"
                         "The value of 'itineraries' MUST be a list of objects. "
                         "Each itinerary object represents a single concrete routing and "
                         "should have, when possible, these keys: origin, destination, "
                         "roundtrip (boolean or null), price (number or null), currency, "
-                        "booking_url, airline, aircraft, cabin_baggage, miles, "
+                        "booking_url, airline, cabin_class, "
                         "departure_date (ISO date or null), return_date (ISO date or null), "
                         "travel_dates_text, expires_in.\n\n"
                         "If there are multiple origins or multiple destinations, "
@@ -495,7 +474,7 @@ def _call_openai_baggage_review(title: str, article_text: str) -> Dict[str, Any]
 
     try:
         content = _openai_chat_completion(
-            model=os.getenv("DEALS_ENRICH_OPENAI_MODEL", "gpt-4.1-mini"),
+            model=os.getenv("DEALS_ENRICH_OPENAI_MODEL", "gpt-4o-mini"),
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
@@ -542,18 +521,11 @@ def _call_openai_validate_all(title: str, article_text: str) -> Dict[str, Any]:
                 "destination_city",
                 "destination_iata",
                 "airline_name",
-                "aircraft",
                 "cabin_class",
                 "travel_dates_summary",
                 "expires_in",
-                "baggage_included",
-                "baggage_pieces_included",
-                "baggage_allowance_kg",
-                "baggage_allowance_display",
-                "baggage_summary",
             ],
             "rules": [
-                "If the text says checked baggage is NOT included, set baggage_included=false even if it can be purchased.",
                 "If unsure, use null for that field.",
             ],
         },
@@ -561,15 +533,15 @@ def _call_openai_validate_all(title: str, article_text: str) -> Dict[str, Any]:
 
     try:
         content = _openai_chat_completion(
-            model=os.getenv("DEALS_ENRICH_OPENAI_MODEL", "gpt-4.1-mini"),
+            model=os.getenv("DEALS_ENRICH_OPENAI_MODEL", "gpt-4o-mini"),
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
                     "content": (
                         "Validate fields and return JSON with keys: origin_city, origin_iata, destination_city, "
-                        "destination_iata, airline_name, aircraft, cabin_class, travel_dates_summary, expires_in, "
-                        "baggage_included, baggage_pieces_included, baggage_allowance_kg, baggage_allowance_display, baggage_summary.\n\n"
+                        "destination_iata, airline_name, cabin_class (Economy/Business/Premium Economy/First or null), "
+                        "travel_dates_summary, expires_in.\n\n"
                         "Input JSON:\n" + json.dumps(user_payload, ensure_ascii=False)
                     ),
                 },
@@ -616,7 +588,7 @@ def _call_openai_miles_estimate(title: str, article_text: str) -> Dict[str, Any]
 
     try:
         content = _openai_chat_completion(
-            model=os.getenv("DEALS_ENRICH_OPENAI_MODEL", "gpt-4.1-mini"),
+            model=os.getenv("DEALS_ENRICH_OPENAI_MODEL", "gpt-4o-mini"),
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
@@ -637,18 +609,15 @@ def _call_openai_miles_estimate(title: str, article_text: str) -> Dict[str, Any]
         return {}
 
 
-def _requested_llm_fields_for_deal(deal: Dict[str, Any], *, source: str, skip_baggage: bool) -> List[str]:
+def _requested_llm_fields_for_deal(deal: Dict[str, Any]) -> List[str]:
     """Compute which fields we want the LLM to fill for this deal.
 
-    We only request fields when they are missing AND the corresponding
-    feature flag is enabled.
+    Only requests IATA codes and cabin_class — everything else (baggage, miles,
+    aircraft) is now fully deterministic and not sent to the LLM.
     """
 
-    # Flags (operator-controlled)
     allucinate = _truthy_env("DEALS_LLM_ALLUCINATE")
     llm_validate_all = _truthy_env("DEALS_LLM_VALIDATE_ALL") or allucinate
-    llm_validate_baggage = _truthy_env("DEALS_LLM_VALIDATE_BAGGAGE") or allucinate
-    llm_enrich_miles = _truthy_env("DEALS_LLM_ENRICH_MILES") or allucinate
 
     requested: List[str] = []
 
@@ -657,35 +626,9 @@ def _requested_llm_fields_for_deal(deal: Dict[str, Any], *, source: str, skip_ba
             d.get("origin_iata"),
             d.get("destination_iata"),
             d.get("airline"),
-            d.get("aircraft"),
             d.get("cabin_class"),
         ]
         return any(_is_missing(x) for x in core)
-
-    def _need_baggage_review(d: Dict[str, Any]) -> bool:
-        signals = [
-            d.get("baggage_allowance_display"),
-            d.get("cabin_baggage"),
-            d.get("baggage_summary"),
-            d.get("baggage_pieces_included"),
-            d.get("baggage_allowance_kg"),
-        ]
-        if any(not _is_missing(s) for s in signals):
-            return False
-        if d.get("baggage_included") in (True, False):
-            return False
-        return True
-
-    llm_fields = deal.get("llm_enriched_fields")
-    llm_fields = llm_fields if isinstance(llm_fields, dict) else {}
-
-    miles_est_from_llm = llm_fields.get("miles_estimate")
-    missing_miles_any = (
-        _is_missing(deal.get("miles"))
-        and _is_missing(deal.get("miles_estimate"))
-        and _is_missing(miles_est_from_llm)
-    )
-    missing_program_display = _is_missing(llm_fields.get("miles_programs_display"))
 
     if llm_validate_all and _need_validate_all(deal):
         requested.extend(
@@ -695,33 +638,11 @@ def _requested_llm_fields_for_deal(deal: Dict[str, Any], *, source: str, skip_ba
                 "destination_city",
                 "destination_iata",
                 "airline_name",
-                "aircraft",
                 "cabin_class",
                 "travel_dates_summary",
                 "expires_in",
             ]
         )
-
-    if not skip_baggage and llm_validate_baggage and (allucinate or _need_baggage_review(deal)):
-        requested.extend(
-            [
-                "baggage_included",
-                "baggage_pieces_included",
-                "baggage_allowance_kg",
-                "baggage_allowance_display",
-                "baggage_summary",
-            ]
-        )
-
-    if llm_enrich_miles:
-        if source == "amadeus":
-            # For Amadeus we want program-aware miles display even if numeric miles exist.
-            if missing_program_display or missing_miles_any:
-                requested.extend(["miles_programs_display", "miles_estimate"])
-        else:
-            # For article-based sources, only ask for miles when fully missing.
-            if missing_miles_any:
-                requested.extend(["miles_estimate", "miles_program"])
 
     # De-dup while preserving order
     seen: set[str] = set()
@@ -783,7 +704,7 @@ def _build_llm_context_from_deal(deal: Dict[str, Any]) -> str:
     if price not in (None, ""):
         parts.append(f"Price: {price} {currency}".strip())
 
-    baggage = str(deal.get("baggage_allowance_display") or deal.get("cabin_baggage") or "").strip()
+    baggage = str(deal.get("baggage_allowance_display") or deal.get("baggage_summary") or "").strip()
     if baggage:
         parts.append(f"Baggage: {baggage}")
 
@@ -798,25 +719,17 @@ def enrich_deal(deal: Dict[str, Any]) -> Dict[str, Any]:
     link = deal.get("link")
     source = str(deal.get("source") or "").lower()
 
-    # By default we do NOT call OpenAI for Amadeus rows.
-    # Amadeus deals typically have no article text to ground the model, so
+    # By default we do NOT call OpenAI for Duffel benchmark rows.
+    # Duffel deals typically have no article text to ground the model, so
     # enrichment would be guesswork. You can override this explicitly.
-    allow_llm_for_amadeus = _truthy_env("DEALS_LLM_ENRICH_AMADEUS")
-    llm_allowed_for_deal = (source != "amadeus") or allow_llm_for_amadeus
+    allow_llm_for_duffel = _truthy_env("DEALS_LLM_ENRICH_DUFFEL")
+    llm_allowed_for_deal = (source not in ("duffel", "amadeus")) or allow_llm_for_duffel
 
-    # --- Enriquecimiento normal (si hay link y HTML) ---
+    # --- Normal enrichment (if there is a link and HTML) ---
     html = None
     article_text = None
     image_url = None
     llm_data: Dict[str, Any] = {}
-    deal_llm_fields = deal.get("llm_enriched_fields")
-    deal_llm_fields = deal_llm_fields if isinstance(deal_llm_fields, dict) else {}
-    missing_miles_initial = not (
-        deal.get("miles")
-        or deal.get("miles_program")
-        or deal.get("miles_estimate")
-        or deal_llm_fields.get("miles_estimate")
-    )
     if isinstance(link, str) and link:
         html = _fetch_article_html(link)
         if html:
@@ -831,10 +744,10 @@ def enrich_deal(deal: Dict[str, Any]) -> Dict[str, Any]:
 
     # Apply the same LLM field policy to all sources.
     # (Previously Amadeus skipped baggage fields by default.)
-    requested_fields = _requested_llm_fields_for_deal(deal, source=source, skip_baggage=False)
+    requested_fields = _requested_llm_fields_for_deal(deal)
     allow_openai = bool(openai_client and llm_allowed_for_deal and requested_fields and ((article_text and str(article_text).strip()) or context_text))
 
-    # En una sola llamada por deal: pedimos solo los campos que faltan.
+    # In a single call per deal: we only request the missing fields.
     if allow_openai and requested_fields:
         payload_item = {
             "id": 0,
@@ -849,8 +762,6 @@ def enrich_deal(deal: Dict[str, Any]) -> Dict[str, Any]:
                 "airline": deal.get("airline"),
                 "aircraft": deal.get("aircraft"),
                 "cabin_class": deal.get("cabin_class"),
-                "cabin_baggage": deal.get("cabin_baggage"),
-                "baggage_allowance_display": deal.get("baggage_allowance_display"),
                 "miles": deal.get("miles"),
                 "price": deal.get("price"),
                 "currency": deal.get("currency"),
@@ -866,36 +777,16 @@ def enrich_deal(deal: Dict[str, Any]) -> Dict[str, Any]:
     if image_url:
         enriched["image_url"] = image_url
 
-    # Campos de equipaje
-    baggage_fields = [
-        "baggage_included",
-        "baggage_pieces_included",
-        "baggage_allowance_kg",
-        "baggage_allowance_display",
-        "baggage_summary",
-    ]
-    skip_baggage = False
-
-    # Merge structured fields (all optional)
+    # Merge structured fields — only fields that are still LLM targets
     base_keys = [
         "origin_city",
         "origin_iata",
         "destination_city",
         "destination_iata",
         "airline_name",
-        "baggage_summary",
-        "aircraft",
-        "miles_program",
-        "miles_estimate",
+        "cabin_class",
         "travel_dates_summary",
         "expires_in",
-        # New fields for flight duration and baggage allowance
-        "flight_duration_minutes",
-        "flight_duration_display",
-        "baggage_included",
-        "baggage_pieces_included",
-        "baggage_allowance_kg",
-        "baggage_allowance_display",
     ]
 
     used_keys: Dict[str, Any] = {}
@@ -905,15 +796,7 @@ def enrich_deal(deal: Dict[str, Any]) -> Dict[str, Any]:
     TOP_LEVEL_SAFE_FIELDS = {
         "origin_iata",
         "destination_iata",
-        "aircraft",
         "cabin_class",
-        "flight_duration_minutes",
-        "flight_duration_display",
-        "baggage_included",
-        "baggage_pieces_included",
-        "baggage_allowance_kg",
-        "baggage_allowance_display",
-        "baggage_summary",
     }
 
     llm_fields_out: Dict[str, Any] = {}
@@ -922,8 +805,6 @@ def enrich_deal(deal: Dict[str, Any]) -> Dict[str, Any]:
         llm_fields_out.update(cur_llm_fields)
 
     for key in base_keys:
-        if skip_baggage and key in baggage_fields:
-            continue
         if key not in llm_data:
             continue
 
@@ -954,136 +835,11 @@ def enrich_deal(deal: Dict[str, Any]) -> Dict[str, Any]:
             enriched[key] = val
         used_keys[key] = val
 
-    # If LLM provided miles_estimate, store it in JSON and mirror into "miles" (DB-safe).
-    if "miles_estimate" in llm_data and llm_data.get("miles_estimate") not in (None, ""):
-        llm_fields_out["miles_estimate"] = llm_data.get("miles_estimate")
-
-    if "miles_program" in llm_data and llm_data.get("miles_program") not in (None, ""):
-        llm_fields_out["miles_program"] = llm_data.get("miles_program")
-
-    if "miles_programs_display" in llm_data and llm_data.get("miles_programs_display") not in (None, ""):
-        llm_fields_out["miles_programs_display"] = llm_data.get("miles_programs_display")
-
-    if missing_miles_initial and _is_missing(enriched.get("miles")):
-        me = llm_data.get("miles_estimate")
-        if isinstance(me, (int, float)) and me:
-            enriched["miles"] = str(int(round(me)))
-            used_keys.setdefault("miles", enriched["miles"])
-
-    # Detailed itineraries (from LLM) — disabled while OpenAI is restricted to miles only
-    itineraries = None
-
-    # --- Fallback local ---
-    missing_miles = not (
-        enriched.get("miles")
-        or enriched.get("miles_program")
-        or enriched.get("miles_estimate")
-        or llm_fields_out.get("miles_estimate")
-    )
-    missing_baggage = False if skip_baggage else all(
-        enriched.get(field) in (None, "")
-        for field in (
-            "baggage_included",
-            "baggage_pieces_included",
-            "baggage_allowance_kg",
-            "baggage_allowance_display",
-        )
-    )
-
-    fallback_used: Dict[str, Any] = {}
-
-    _CITY_CODE_MAP = {
-        "NYC": "JFK",
-        "CHI": "ORD",
-        "WAS": "IAD",
-        "YTO": "YYZ",
-        "LON": "LHR",
-        "PAR": "CDG",
-    }
-
-    def _estimate_duration(from_iata: Any, to_iata: Any, is_direct: Optional[bool]) -> Tuple[Optional[int], Optional[str]]:
-        if not from_iata or not to_iata:
-            return None, None
-
-        fi = str(from_iata).strip().upper()
-        ti = str(to_iata).strip().upper()
-
-        fi = _CITY_CODE_MAP.get(fi, fi)
-        ti = _CITY_CODE_MAP.get(ti, ti)
-
-        try:
-            dist = great_circle_miles(fi, ti)
-        except Exception:
-            dist = None
-        if not dist:
-            return None, None
-
-        # Velocidad media: más baja si no es directo; añadimos buffer de conexión
-        speed_mph = 450.0 if is_direct else 400.0
-        minutes_val = int(round((dist / speed_mph) * 60))
-        if not is_direct:
-            minutes_val += 90  # buffer de conexión
-
-        minutes_val = max(minutes_val, 40)
-        hours = minutes_val // 60
-        minutes = minutes_val % 60
-        display_val = f"{hours}h {minutes:02d}m" if hours else f"{minutes}m"
-        return minutes_val, display_val
-
-    # Completar también en itinerarios existentes si falta duración y hay IATAs
-    if isinstance(enriched.get("itineraries"), list):
-        for it in enriched.get("itineraries"):
-            if not isinstance(it, dict):
-                continue
-            if it.get("flight_duration_minutes") or it.get("flight_duration_display"):
-                continue
-            oi = it.get("origin_iata")
-            di = it.get("destination_iata")
-            dur_minutes, dur_display = _estimate_duration(oi, di, it.get("direct") if isinstance(it.get("direct"), bool) else None)
-            if dur_minutes and dur_display:
-                it["flight_duration_minutes"] = dur_minutes
-                it["flight_duration_display"] = dur_display
-
-    # Deterministic miles estimate (no OpenAI) when missing and there are IATAs.
-    # Business rule: show exactly one *valid* program (Miles&More/Flying Blue when applicable;
-    # otherwise best eligible program for the airline).
-    if missing_miles:
-        oiata = enriched.get("origin_iata")
-        diata = enriched.get("destination_iata")
-        airline_name = enriched.get("airline") or enriched.get("airline_name")
-        try:
-            dist_m = great_circle_miles(str(oiata), str(diata)) if oiata and diata else None
-        except Exception:
-            dist_m = None
-
-        if isinstance(dist_m, int) and dist_m > 0:
-            best_prog, best_est = choose_best_program(dist_m, str(airline_name) if airline_name else None)
-            if best_prog and isinstance(best_est, int) and best_est > 0:
-                best_text = f"{_fmt_miles_apostrophe2(best_est)} · {best_prog}"
-                enriched["miles"] = best_text
-                fallback_used["miles_programs_display"] = best_text
-                fallback_used["miles_estimate"] = best_est
-
-    # Deterministic baggage: assume Economy Light when missing.
-    if missing_baggage:
-        cabin_raw = enriched.get("cabin_class")
-        cabin = str(cabin_raw or "").strip().upper()
-        is_economy = cabin in {"ECONOMY", "Y"} or cabin.startswith("ECONOMY")
-        if is_economy:
-            enriched.setdefault("baggage_included", False)
-            enriched.setdefault("baggage_allowance_display", "Kein Aufgabegepäck")
-            fallback_used.setdefault("baggage_included", enriched.get("baggage_included"))
-            fallback_used.setdefault("baggage_allowance_display", enriched.get("baggage_allowance_display"))
-
-    # Marcar deals que han sido enriquecidos vía LLM
+    # Mark deals that have been enriched via LLM
     if llm_data or enriched.get("llm_enriched_fallback"):
         enriched["llm_enriched"] = True
-        merged_fields = dict(used_keys)
-        if fallback_used:
-            merged_fields.update(fallback_used)
-        if merged_fields:
-            enriched["llm_enriched_fields"] = merged_fields
-        # Also keep raw LLM outputs for non-schema fields.
+        if used_keys:
+            enriched["llm_enriched_fields"] = used_keys
         if llm_fields_out:
             merged_json = dict(enriched.get("llm_enriched_fields") or {})
             if isinstance(merged_json, dict):
@@ -1091,7 +847,7 @@ def enrich_deal(deal: Dict[str, Any]) -> Dict[str, Any]:
                 enriched["llm_enriched_fields"] = merged_json
         enriched["llm_enrichment_version"] = os.getenv(
             "DEALS_LLM_ENRICHMENT_VERSION",
-            "v1-flight-baggage-2026-01-06",
+            "v2-iata-cabin-2026-03-03",
         )
 
     return enriched
@@ -1109,15 +865,7 @@ def enrich_deals_batch(deals: List[Dict[str, Any]], max_items: Optional[int] = N
     # Helpful operator diagnostics: if LLM flags are enabled but OpenAI isn't configured,
     # make it explicit (without leaking secrets).
     if not openai_client:
-        if any(
-            _truthy_env(k)
-            for k in (
-                "DEALS_LLM_ENRICH_MILES",
-                "DEALS_LLM_ENRICH_AMADEUS",
-                "DEALS_LLM_VALIDATE_ALL",
-                "DEALS_LLM_VALIDATE_BAGGAGE",
-            )
-        ):
+        if any(_truthy_env(k) for k in ("DEALS_LLM_ENRICH_DUFFEL", "DEALS_LLM_VALIDATE_ALL")):
             print("[llm] OpenAI client not configured; skipping LLM enrichment (check openai package + OPENAI_API_KEY).")
 
     if max_items is None or max_items <= 0:
@@ -1139,11 +887,9 @@ def enrich_deals_batch(deals: List[Dict[str, Any]], max_items: Optional[int] = N
 
         link = d.get("link")
         source = str(d.get("source") or "").lower()
-        # Apply the same baggage policy across all sources.
-        skip_baggage = False
 
-        allow_llm_for_amadeus = _truthy_env("DEALS_LLM_ENRICH_AMADEUS")
-        llm_allowed_for_deal = (source != "amadeus") or allow_llm_for_amadeus
+        allow_llm_for_duffel = _truthy_env("DEALS_LLM_ENRICH_DUFFEL")
+        llm_allowed_for_deal = (source not in ("duffel", "amadeus")) or allow_llm_for_duffel
 
         html = None
         article_text = None
@@ -1159,7 +905,7 @@ def enrich_deals_batch(deals: List[Dict[str, Any]], max_items: Optional[int] = N
         except Exception:
             context_text = ""
 
-        requested_fields = _requested_llm_fields_for_deal(d, source=source, skip_baggage=skip_baggage)
+        requested_fields = _requested_llm_fields_for_deal(d)
         allow_openai = bool(
             openai_client
             and llm_allowed_for_deal
@@ -1170,15 +916,15 @@ def enrich_deals_batch(deals: List[Dict[str, Any]], max_items: Optional[int] = N
             )
         )
 
-        # Debuggability: Amadeus has no article text; make skip reasons visible.
+        # Debuggability: Duffel rows have no article text; make skip reasons visible.
         if (
-            source == "amadeus"
-            and _truthy_env("DEALS_LLM_ENRICH_AMADEUS")
+            source in ("duffel", "amadeus")
+            and _truthy_env("DEALS_LLM_ENRICH_DUFFEL")
             and requested_fields
             and not allow_openai
         ):
             print(
-                "[llm] Amadeus LLM skipped: "
+                "[llm] Duffel LLM skipped: "
                 f"openai_client={bool(openai_client)} "
                 f"llm_allowed={bool(llm_allowed_for_deal)} "
                 f"requested_fields={requested_fields!r} "
@@ -1187,15 +933,6 @@ def enrich_deals_batch(deals: List[Dict[str, Any]], max_items: Optional[int] = N
             )
 
         if allow_openai and requested_fields:
-            # Provide computed baseline for Amadeus estimations.
-            oi = d.get("origin_iata")
-            di = d.get("destination_iata")
-            dist = None
-            if oi and di:
-                try:
-                    dist = great_circle_miles(str(oi), str(di))
-                except Exception:
-                    dist = None
             item_id = idx
             pending_index_to_id[idx] = item_id
             pending_items.append(
@@ -1205,12 +942,9 @@ def enrich_deals_batch(deals: List[Dict[str, Any]], max_items: Optional[int] = N
                     "source": source,
                     "requested_fields": requested_fields,
                     "computed": {
-                        "great_circle_miles": dist,
                         "cabin_class": d.get("cabin_class"),
                     },
                     "rules": [
-                        "If source=amadeus and you output miles_programs_display, format like: 'Miles&More: 3000 / Flying Blue: 2700'.",
-                        "If estimating baggage for amadeus and cabin_class is ECONOMY and only cabin baggage is known, assume no checked bag included (Economy Light).",
                         "Do not overwrite existing facts; only fill requested_fields.",
                     ],
                     "existing": {
@@ -1219,11 +953,7 @@ def enrich_deals_batch(deals: List[Dict[str, Any]], max_items: Optional[int] = N
                         "origin_iata": d.get("origin_iata"),
                         "destination_iata": d.get("destination_iata"),
                         "airline": d.get("airline"),
-                        "aircraft": d.get("aircraft"),
                         "cabin_class": d.get("cabin_class"),
-                        "cabin_baggage": d.get("cabin_baggage"),
-                        "baggage_allowance_display": d.get("baggage_allowance_display"),
-                        "miles": d.get("miles"),
                         "price": d.get("price"),
                         "currency": d.get("currency"),
                         "date_out": d.get("date_out") or d.get("departure_date"),
@@ -1280,26 +1010,16 @@ def enrich_deals_batch(deals: List[Dict[str, Any]], max_items: Optional[int] = N
                 # We rely on enrich_deal's existing checks by placing llm_data
                 # into llm_enriched_fields via a second pass.
                 # The simplest safe approach is to apply missing-only writes here.
-                base_keys_set = set(base_no_fetch.keys())
                 llm_fields_out: Dict[str, Any] = {}
                 cur_llm_fields = enriched.get("llm_enriched_fields")
                 if isinstance(cur_llm_fields, dict):
                     llm_fields_out.update(cur_llm_fields)
 
-                # Allow promoting a small set of schema-safe keys to top-level so
-                # they can be persisted into dedicated DB columns.
+                # Promote only schema-safe fields to top-level.
                 PROMOTE_SAFE_FIELDS = {
                     "origin_iata",
                     "destination_iata",
-                    "aircraft",
                     "cabin_class",
-                    "flight_duration_minutes",
-                    "flight_duration_display",
-                    "baggage_included",
-                    "baggage_pieces_included",
-                    "baggage_allowance_kg",
-                    "baggage_allowance_display",
-                    "baggage_summary",
                 }
 
                 for k, v in llm_data.items():
@@ -1308,29 +1028,16 @@ def enrich_deals_batch(deals: List[Dict[str, Any]], max_items: Optional[int] = N
                     if k in {"origin_iata", "destination_iata"}:
                         if not isinstance(v, str) or len(v.strip()) != 3 or not v.strip().isalpha():
                             continue
-                    # Keep LLM-only fields in JSON to avoid DB schema mismatches.
                     llm_fields_out[k] = v
-
-                    # Promote only schema-safe fields to top-level.
-                    if k not in PROMOTE_SAFE_FIELDS and k not in base_keys_set:
-                        continue
-                    if not _is_missing(enriched.get(k)):
-                        continue
-                    enriched[k] = v
-
-                # Mirror enrich_deal behaviour: if LLM provided miles_estimate
-                # and the row still has no 'miles', set it for DB compatibility.
-                if _is_missing(enriched.get("miles")):
-                    me = llm_data.get("miles_estimate")
-                    if isinstance(me, (int, float)) and me:
-                        enriched["miles"] = str(int(round(me)))
+                    if k in PROMOTE_SAFE_FIELDS and _is_missing(enriched.get(k)):
+                        enriched[k] = v
 
                 # Mark LLM meta
                 enriched["llm_enriched"] = True
                 enriched["llm_enriched_fields"] = llm_fields_out
                 enriched["llm_enrichment_version"] = os.getenv(
                     "DEALS_LLM_ENRICHMENT_VERSION",
-                    "v1-flight-baggage-2026-01-06",
+                    "v2-iata-cabin-2026-03-03",
                 )
 
             result.append(enriched)

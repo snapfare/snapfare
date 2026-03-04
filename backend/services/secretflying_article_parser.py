@@ -15,22 +15,22 @@ from scoring.miles_utils import great_circle_miles, approximate_program_miles
 
 
 _SKYSCANNER_PSEUDO_TO_IATA: Dict[str, str] = {
-    # Código interno de Skyscanner para "Singapur (todas las ciudades)".
-    # Lo normalizamos al IATA principal SIN para que el pipeline pueda
-    # tratarlo igual que otros destinos.
+    # Internal Skyscanner code for "Singapore (all cities)".
+    # We normalize it to the main IATA code SIN so the pipeline can
+    # treat it the same as other destinations.
     "SINS": "SIN",
-    # Código interno de Skyscanner que usan para Mumbai en algunos enlaces
-    # agregados. Lo normalizamos a BOM.
+    # Internal Skyscanner code used for Mumbai in some aggregated links.
+    # We normalize it to BOM.
     "IBOM": "BOM",
-    # Código interno de Skyscanner para "Beijing (todas las ciudades)".
-    # Lo normalizamos al city code BJS para representar la ciudad.
+    # Internal Skyscanner code for "Beijing (all cities)".
+    # We normalize it to the city code BJS to represent the city.
     "BJSA": "BJS",
-    # Códigos "any airport" típicos en enlaces EEUU
-    "NYCA": "NYC",  # Nueva York (cubre JFK/LGA/EWR)
-    "FLLA": "FLL",  # Fort Lauderdale (área)
+    # Typical "any airport" codes in US links
+    "NYCA": "NYC",  # New York (covers JFK/LGA/EWR)
+    "FLLA": "FLL",  # Fort Lauderdale (area)
 }
 
-# Ciudad-código (3 letras) a aeropuerto principal para cálculo de distancias.
+# City code (3 letters) to primary airport for distance calculations.
 _CITY_CODE_TO_PRIMARY: Dict[str, str] = {
     "NYC": "JFK",
     "LON": "LHR",
@@ -46,7 +46,7 @@ _CITY_CODE_TO_PRIMARY: Dict[str, str] = {
     "BER": "BER",
 }
 
-# Nombres de ciudad para IATA comunes cuando el HTML no da texto claro.
+# City names for common IATA codes when the HTML does not provide clear text.
 _IATA_TO_CITY: Dict[str, str] = {
     "NYC": "New York",
     "FLL": "Fort Lauderdale",
@@ -111,9 +111,9 @@ def _iata_for_distance(code: str | None) -> Optional[str]:
     if not code:
         return None
     code_up = code.strip().upper()
-    # Primero normalizamos pseudo-códigos tipo NYCA -> NYC.
+    # First normalize pseudo-codes like NYCA -> NYC.
     code_norm = _normalize_iata_code(code_up) or code_up
-    # Si es un city code conocido, usamos su aeropuerto principal.
+    # If it is a known city code, use its primary airport.
     mapped = _CITY_CODE_TO_PRIMARY.get(code_norm)
     if mapped:
         return mapped
@@ -182,7 +182,7 @@ def _parse_date_range_fragment(text: str, default_year: int) -> list[tuple[date,
         m2 = m.group(4)
         month1 = _MONTHS_MAP.get(m1.lower()) if m1 else None
         month2 = _MONTHS_MAP.get(m2.lower()) if m2 else month1
-        # Si falta mes1 pero hay mes2, asumimos mes1=mes2
+        # If month1 is missing but month2 exists, assume month1=month2
         if not month1 and month2:
             month1 = month2
         if not month1:
@@ -199,10 +199,10 @@ def _parse_date_range_fragment(text: str, default_year: int) -> list[tuple[date,
 
 
 def _extract_airline_from_body(soup: BeautifulSoup) -> Optional[str]:
-    """Heurística sencilla para extraer el nombre de la aerolínea.
+    """Simple heuristic to extract the airline name.
 
-    Busca patrones del tipo "Etihad Airways", "Qatar Airways", "Lufthansa",
-    etc. en los primeros párrafos del artículo.
+    Looks for patterns like "Etihad Airways", "Qatar Airways", "Lufthansa",
+    etc. in the first paragraphs of the article.
     """
 
     body = soup.find("article") or soup.find("main") or soup.body
@@ -214,7 +214,7 @@ def _extract_airline_from_body(soup: BeautifulSoup) -> Optional[str]:
     if not text:
         return None
 
-    # Patrón principal: nombre propio seguido de Airlines / Airways / Air / Line(s)
+    # Main pattern: proper noun followed by Airlines / Airways / Air / Line(s)
     m = re.search(
         r"([A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3})\s+"
         r"(Airlines?|Airways|Air|Line|Lines)",
@@ -223,7 +223,7 @@ def _extract_airline_from_body(soup: BeautifulSoup) -> Optional[str]:
     if m:
         return f"{m.group(1).strip()} {m.group(2).strip()}".strip()
 
-    # Fallback: capturar algo tipo "Etihad Airways is offering" / "Lufthansa offers"
+    # Fallback: capture something like "Etihad Airways is offering" / "Lufthansa offers"
     m = re.search(
         r"([A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3})\s+"
         r"(is offering|offers|are offering|has launched|has once again launched|is selling|sells)",
@@ -238,9 +238,9 @@ def _extract_airline_from_body(soup: BeautifulSoup) -> Optional[str]:
 def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
     """Parse already-fetched SecretFlying HTML into the normalized deal dict.
 
-    Esto permite reutilizar la misma lógica tanto desde `parse_secretflying_post`
-    (que hace la petición HTTP real) como desde scripts de depuración que
-    cargan HTML estático desde disco (p.ej. html_dumps).
+    This allows reusing the same logic both from `parse_secretflying_post`
+    (which makes the actual HTTP request) and from debugging scripts that
+    load static HTML from disk (e.g. html_dumps).
     """
 
     soup = BeautifulSoup(html, "html.parser")
@@ -249,19 +249,19 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
     h1 = soup.find("h1")
     title = h1.get_text(strip=True) if h1 else ""
 
-    # Precio + moneda desde todo el texto
+    # Price + currency from the full text
     full_text = soup.get_text(" ", strip=True)
     price, currency = _extract_price(full_text)
 
-    # Origen / destino heurístico desde el título (texto libre)
+    # Heuristic origin / destination from the title (free text)
     origin, destination = _extract_route_from_title(title)
 
-    # Aerolínea principal (si se menciona en el cuerpo del artículo)
+    # Main airline (if mentioned in the article body)
     airline = _extract_airline_from_body(soup)
 
-    # Intentar localizar un bloque de "Travel dates" / "Travel period" (o similares)
-    # para tener una descripción humana de las fechas aunque no podamos sacar
-    # días exactos.
+    # Try to locate a "Travel dates" / "Travel period" block (or similar)
+    # to have a human-readable description of the dates even if we cannot extract
+    # exact days.
     travel_dates_text: Optional[str] = None
     try:
         labels = ["travel dates", "travel period", "travel date"]
@@ -277,28 +277,28 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
             parent = node.parent
             if parent is not None:
                 line = parent.get_text(" ", strip=True)
-                # Caso típico: "Travel dates: January to March 2025"
+                # Typical case: "Travel dates: January to March 2025"
                 if ":" in line:
                     travel_dates_text = line.split(":", 1)[1].strip() or line.strip()
                 else:
                     sib = parent.find_next_sibling(["p", "div", "ul", "ol"])
                     if sib is not None:
                         travel_dates_text = sib.get_text(" ", strip=True)
-            # Fallback muy conservador
+            # Very conservative fallback
             if not travel_dates_text:
                 travel_dates_text = str(node).strip()
 
-        # Fallback adicional específico para el patrón actual de SecretFlying,
-        # donde usan un bloque tipo:
+        # Additional fallback specific to the current SecretFlying pattern,
+        # where they use a block like:
         #   "DATES: Availability from February to April 2026"
-        # en lugar de la etiqueta "Travel dates".
+        # instead of the "Travel dates" label.
         if not travel_dates_text:
             for p in soup.find_all("p"):
                 text_p = p.get_text(" ", strip=True).strip()
                 lt = text_p.lower()
                 if "availability from" in lt:
-                    # Extraemos solo la parte a partir de "availability from".
-                    # Ejemplo: "DATES: Availability from February to April 2026"
+                    # Extract only the part starting from "availability from".
+                    # Example: "DATES: Availability from February to April 2026"
                     # -> "February to April 2026".
                     idx = lt.find("availability from")
                     if idx >= 0:
@@ -308,8 +308,8 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
     except Exception:
         travel_dates_text = None
 
-    # Bloque opcional de rutas agregadas ("Routes:") con precios por par
-    # de ciudades, p.ej. "Barcelona – Kochi: €219-€221".
+    # Optional aggregated routes block ("Routes:") with prices per city
+    # pair, e.g. "Barcelona – Kochi: €219-€221".
     routes: List[Dict[str, Any]] = []
     try:
         article_root = soup.find("article") or soup
@@ -358,10 +358,10 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
     except Exception:
         routes = []
 
-    # Para cada bloque de ejemplo de fechas por ruta (por ejemplo, el que
-    # empieza con "Barcelona – Kochi: €219-€221" seguido de varios enlaces
-    # de Skyscanner), intentamos asociar un par origin_iata/destination_iata
-    # y un booking_url de referencia a la ruta correspondiente.
+    # For each route date example block (for instance, the one starting with
+    # "Barcelona – Kochi: €219-€221" followed by several Skyscanner links),
+    # we try to associate an origin_iata/destination_iata pair and a
+    # reference booking_url to the corresponding route.
     route_details: Dict[tuple, Dict[str, Any]] = {}
     try:
         article_root = soup.find("article") or soup
@@ -376,7 +376,7 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
             r_origin = m.group(1).strip()
             r_dest = m.group(2).strip()
 
-            # Primer enlace Skyscanner dentro de este bloque
+            # First Skyscanner link within this block
             a = p.find("a", href=True)
             if not a:
                 continue
@@ -424,8 +424,8 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
     except Exception:
         route_details = {}
 
-    # Enriquecer cada ruta con los detalles IATA/booking_url si los hemos
-    # podido asociar.
+    # Enrich each route with IATA/booking_url details if we were able
+    # to associate them.
     if routes and route_details:
         for r in routes:
             key = (r.get("origin"), r.get("destination"))
@@ -439,8 +439,8 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
             if det.get("booking_url"):
                 r["booking_url"] = det["booking_url"]
 
-    # Bloque opcional de aerolíneas explícitas ("AIRLINES:") como el que
-    # aparece en muchos posts: "AIRLINES:" seguido del nombre en negrita.
+    # Optional explicit airlines block ("AIRLINES:") as seen in many posts:
+    # "AIRLINES:" followed by the name in bold.
     try:
         if not airline:
             article_root = soup.find("article") or soup
@@ -450,7 +450,7 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
                     continue
                 label = strongs[0].get_text(" ", strip=True).lower()
                 if "airlines:" in label:
-                    # Tomamos el resto de <strong> dentro del mismo <p>
+                    # Take the remaining <strong> elements within the same <p>
                     names = [s.get_text(" ", strip=True) for s in strongs[1:]]
                     names = [n for n in names if n]
                     if names:
@@ -459,14 +459,14 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
     except Exception:
         pass
 
-    # Si hemos podido extraer un bloque de rutas estructuradas, usamos la
-    # primera ruta como origen/destino "oficiales" del deal, en lugar del
-    # texto libre con varias ciudades del título.
+    # If we were able to extract a structured routes block, use the first
+    # route as the "official" origin/destination of the deal, instead of the
+    # free text with multiple cities from the title.
     if routes:
         origin = routes[0].get("origin") or origin
         destination = routes[0].get("destination") or destination
 
-    # Imagen principal: og:image o primer <img>
+    # Main image: og:image or first <img>
     image = None
     og = soup.find("meta", property="og:image")
     if og and og.get("content"):
@@ -478,7 +478,7 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
             if image.startswith("/"):
                 image = urljoin(url, image)
 
-    # booking_url: primer enlace externo (no secretflying) dentro del artículo
+    # booking_url: first external link (not secretflying) within the article
     booking_url = None
     article = soup.find("article") or soup
     external_links: List[str] = []
@@ -492,15 +492,15 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
         if "secretflying.com" in netloc:
             continue
 
-        # Primer enlace externo que encontremos lo usamos como booking_url principal
+        # Use the first external link we find as the main booking_url
         if booking_url is None:
             booking_url = href
-        # Guardamos todos los externos para construir potencialmente múltiples itinerarios
+        # Save all external links to potentially build multiple itineraries
         external_links.append(href)
 
-    # Intentar extraer datos estructurados de todos los enlaces externos tipo Skyscanner
-    # (origen/destino, fechas, cabina...). Esto nos permite modelar varios
-    # itinerarios por post cuando haya múltiples enlaces.
+    # Try to extract structured data from all Skyscanner-type external links
+    # (origin/destination, dates, cabin...). This allows us to model multiple
+    # itineraries per post when there are multiple links.
     origin_iata = None
     destination_iata = None
     departure_date = None
@@ -532,7 +532,7 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
             parsed = urlparse(ext_url)
             qs = parse_qs(parsed.query)
 
-            # 1) Intentar obtener códigos IATA y fechas desde la query-string
+            # 1) Try to get IATA codes and dates from the query string
             origin_code = (
                 _first_matching_param(qs, "origin", "from")
                 or _find_param_by_substring(qs, ["origin", "from"])
@@ -560,12 +560,12 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
             rtn = _first_matching_param(qs, "rtn", "roundtrip")
             rtn = (rtn or "").strip()
 
-            # Normalizar posibles códigos internos (p.ej. SINS -> SIN en Skyscanner)
+            # Normalize possible internal codes (e.g. SINS -> SIN in Skyscanner)
             origin_code = _normalize_iata_code(origin_code) or ""
             dest_code = _normalize_iata_code(dest_code) or ""
 
-            # 2) Si no hemos podido deducir códigos de la query, intentamos
-            # extraerlos del path (p.ej. /flights/BCN/COK/2025-02-01/2025-02-10).
+            # 2) If we could not deduce codes from the query, try to extract
+            # them from the path (e.g. /flights/BCN/COK/2025-02-01/2025-02-10).
             if not origin_code or not dest_code:
                 segments = [seg for seg in parsed.path.split("/") if seg]
                 iata_candidates = [seg.upper() for seg in segments if len(seg) == 3 and seg.isalpha()]
@@ -573,7 +573,7 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
                     origin_code = origin_code or iata_candidates[0]
                     dest_code = dest_code or iata_candidates[1]
 
-                # Fechas simples en el path (YYYYMMDD o YYYY-MM-DD / DDMMYY, etc.)
+                # Simple dates in the path (YYYYMMDD or YYYY-MM-DD / DDMMYY, etc.)
                 if not dep or not ret:
                     date_like = [seg for seg in segments if any(ch.isdigit() for ch in seg) and len(seg) in {6, 8, 10}]
                     if date_like:
@@ -582,7 +582,7 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
                         if len(date_like) > 1 and not ret:
                             ret = date_like[1]
 
-            # Sin origen/destino no consideramos que haya vuelo bien definido
+            # Without origin/destination we do not consider this a well-defined flight
             if not origin_code or not dest_code:
                 continue
 
@@ -604,7 +604,7 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
             if airline:
                 itin["airline"] = airline
 
-            # Rellenamos precio/moneda globales como aproximación
+            # Fill in global price/currency as an approximation
             if price is not None:
                 itin["price"] = price
                 itin["currency"] = (currency or "EUR") if price is not None else None
@@ -613,7 +613,7 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
         except Exception:
             continue
 
-    # Consolidar itinerarios: una fila por pareja origen/destino.
+    # Consolidate itineraries: one row per origin/destination pair.
     if len(itineraries) > 1:
         merged: Dict[frozenset, Dict[str, Any]] = {}
 
@@ -631,7 +631,7 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
                 return a
             return max(a, b)
 
-        # Preferimos el sentido detectado en título para escoger el orden canónico
+        # Prefer the direction detected in the title to choose the canonical order
         preferred_pair = None
         if origin_iata and destination_iata:
             preferred_pair = (origin_iata, destination_iata)
@@ -649,7 +649,7 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
             def _canonical_pair() -> tuple[str, str]:
                 if preferred_pair and set(preferred_pair) == set(pair_key):
                     return preferred_pair
-                # fallback: orden alfabético para que sea determinista
+                # fallback: alphabetical order for determinism
                 return tuple(sorted([o_iata, d_iata]))
 
             existing = merged.get(pair_key)
@@ -661,7 +661,7 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
                 merged[pair_key] = new_it
                 continue
 
-            # Merge: conservar booking_url existente, acumular rango fechas y normalizar orden
+            # Merge: keep existing booking_url, accumulate date range and normalize order
             existing["departure_date"] = _safe_min_date(existing.get("departure_date"), it.get("departure_date"))
             existing["return_date"] = _safe_max_date(existing.get("return_date"), it.get("return_date"))
             can_o, can_d = _canonical_pair()
@@ -676,24 +676,24 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
                 existing["roundtrip"] = False
                 existing["one_way"] = True
 
-            # Preferir airline si falta
+            # Prefer airline if missing
             if not existing.get("airline") and it.get("airline"):
                 existing["airline"] = it.get("airline")
-            # Preferir cabina si falta
+            # Prefer cabin class if missing
             if not existing.get("cabin_class") and it.get("cabin_class"):
                 existing["cabin_class"] = it.get("cabin_class")
-            # Preferir duración si falta
+            # Prefer duration if missing
             if not existing.get("flight_duration_minutes") and it.get("flight_duration_minutes"):
                 existing["flight_duration_minutes"] = it.get("flight_duration_minutes")
             if not existing.get("flight_duration_display") and it.get("flight_duration_display"):
                 existing["flight_duration_display"] = it.get("flight_duration_display")
-            # Preferir millas si falta
+            # Prefer miles if missing
             if not existing.get("miles") and it.get("miles"):
                 existing["miles"] = it.get("miles")
 
         itineraries = list(merged.values())
 
-    # Extraer rangos de fechas desde el texto del post (p.ej. "24th-28th Jan").
+    # Extract date ranges from the post text (e.g. "24th-28th Jan").
     try:
         year_guess = None
         for src in (travel_dates_text, title, full_text):
@@ -716,13 +716,13 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
             dep_str = min_start.isoformat()
             ret_str = max_end.isoformat()
 
-            # Refrescar nivel deal
+            # Refresh deal-level dates
             if not departure_date or dep_str < str(departure_date):
                 departure_date = dep_str
             if not return_date or ret_str > str(return_date):
                 return_date = ret_str
 
-            # Aplicar a itinerarios consolidados si existen
+            # Apply to consolidated itineraries if they exist
             if itineraries:
                 for it in itineraries:
                     if not isinstance(it, dict):
@@ -732,14 +732,14 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
                     if not it.get("return_date") or ret_str > str(it.get("return_date")):
                         it["return_date"] = ret_str
 
-            # Rellenar travel_dates_text si no existía
+            # Fill in travel_dates_text if it did not exist
             if not travel_dates_text:
                 travel_dates_text = f"{dep_str} – {ret_str}"
     except Exception:
         pass
 
-    # Para compatibilidad con el pipeline actual, copiamos el primer itinerario
-    # al nivel raíz del deal (origin_iata/destination_iata/fechas/cabin_class...)
+    # For compatibility with the current pipeline, copy the first itinerary
+    # to the root level of the deal (origin_iata/destination_iata/dates/cabin_class...)
     if itineraries:
         first = itineraries[0]
         origin_iata = first.get("origin_iata")
@@ -754,8 +754,8 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
         elif roundtrip is False:
             one_way = True
 
-        # Si conocemos un origen/destino textual a nivel de deal, lo
-        # propagamos a los itinerarios que no tengan ese campo rellenado.
+        # If we know a textual origin/destination at the deal level,
+        # propagate it to itineraries that do not have that field filled in.
         for it in itineraries:
             if isinstance(it, dict):
                 if origin and not it.get("origin"):
@@ -763,8 +763,8 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
                 if destination and not it.get("destination"):
                     it["destination"] = destination
 
-    # Completar etiquetas de origen/destino si vienen vacías o rotas
-    # (p.ej., títulos "Non-stop from ..." que terminan en "Non").
+    # Fill in origin/destination labels if they are empty or broken
+    # (e.g., titles "Non-stop from ..." that end up as "Non").
     def _fill_place(current: Optional[str], iata: Optional[str]) -> Optional[str]:
         def _looks_broken(text: str) -> bool:
             low = text.strip().lower()
@@ -790,11 +790,11 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
     origin = _fill_place(origin, origin_iata)
     destination = _fill_place(destination, destination_iata)
 
-    # Si no tenemos travel_dates_text pero sí fechas exactas, generamos un rango simple
+    # If we don't have travel_dates_text but do have exact dates, generate a simple range
     if not travel_dates_text and departure_date and return_date:
         travel_dates_text = f"{departure_date} – {return_date}"
 
-    # Limpieza en cada itinerario: rellenar origen/destino legible si falta o está roto
+    # Cleanup per itinerary: fill in human-readable origin/destination if missing or broken
     for it in itineraries or []:
         if not isinstance(it, dict):
             continue
@@ -805,7 +805,7 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
         it["origin"] = _fill_place(it_origin, it_origin_iata)
         it["destination"] = _fill_place(it_dest, it_dest_iata)
 
-        # Añadir millas aproximadas por itinerario si conocemos ambos IATA
+        # Add approximate miles per itinerary if we know both IATA codes
         if (it_origin_iata or origin_iata) and (it_dest_iata or destination_iata) and not it.get("miles"):
             try:
                 o_code = _iata_for_distance(it_origin_iata or origin_iata)
@@ -851,7 +851,7 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
         "source": "SecretFlying",
     }
 
-    # Millas y duración aproximadas a nivel de deal si tenemos ambos IATA
+    # Approximate miles and duration at the deal level if we have both IATA codes
     if (deal.get("origin_iata") or origin_iata) and (deal.get("destination_iata") or destination_iata):
         try:
             o_code = _iata_for_distance(deal.get("origin_iata") or origin_iata)
@@ -875,17 +875,17 @@ def _parse_secretflying_html(html: str, url: str) -> Dict[str, Any]:
 def parse_secretflying_post(url: str) -> Dict[str, Any]:
     """Parse a SecretFlying deal post page and return normalized fields.
 
-    - link: URL del post de SecretFlying (la página del deal)
-    - booking_url: primer enlace externo (Skyscanner, aerolínea, OTA...)
-    - price / currency: extraídos del texto completo
-    - origin / destination: heurísticos desde el título
-    - image: og:image o primer <img>
+    - link: URL of the SecretFlying post page
+    - booking_url: first external link (Skyscanner, airline, OTA...)
+    - price / currency: extracted from the full text
+    - origin / destination: heuristic extraction from the title
+    - image: og:image or first <img>
     """
     load_dotenv(find_dotenv())
 
-    # 1) Intentar primero con requests directo (sin ScrapingBee), igual que
-    # el scraper de listados. Esto evita depender siempre de la API y, si
-    # la página concreta no está tan protegida, suele funcionar bien.
+    # 1) Try first with a direct requests call (without ScrapingBee), same as
+    # the listing scraper. This avoids always depending on the API and works
+    # well when the target page is not heavily protected.
     html: Optional[str] = None
     try:
         headers = {
@@ -900,11 +900,11 @@ def parse_secretflying_post(url: str) -> Dict[str, Any]:
     except Exception:
         html = None
 
-    # 2) Si falla o devuelve algo vacío, usar ScrapingBee como fallback
+    # 2) If that fails or returns empty content, use ScrapingBee as fallback
     if html is None:
         api_key = os.getenv("SCRAPINGBEE_API_KEY")
         if not api_key:
-            raise RuntimeError("SCRAPINGBEE_API_KEY no está definido en el .env y la petición directa ha fallado")
+            raise RuntimeError("SCRAPINGBEE_API_KEY is not set in .env and the direct request failed")
 
         client = ScrapingBeeClient(api_key=api_key)
 

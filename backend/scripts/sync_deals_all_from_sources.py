@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-"""Sincroniza deals_all con deals_traveldealz y deals_secretflying.
+"""Sync deals_all with deals_traveldealz and deals_secretflying.
 
-Para cada fila de deals_traveldealz / deals_secretflying cuyo `link` no
-esté ya presente en deals_all, inserta una fila equivalente en
-`deals_all`, marcando `source` y dejando `scoring=None`.
+For each row in deals_traveldealz / deals_secretflying whose `link` is
+not already present in deals_all, inserts an equivalent row into
+`deals_all`, setting `source` and leaving `scoring=None`.
 
-Uso:
+Usage:
 
     python -m backend.scripts.sync_deals_all_from_sources
 """
@@ -36,7 +36,7 @@ def _load_existing_links() -> Set[str]:
     try:
         rsp = _client.table("deals_all").select("link").execute()
     except Exception as e:  # pragma: no cover - diagnostic only
-        print("[sync_deals_all] Error leyendo deals_all:", repr(e))
+        print("[sync_deals_all] Error reading deals_all:", repr(e))
         return set()
     rows = getattr(rsp, "data", []) or []
     for r in rows:
@@ -47,7 +47,7 @@ def _load_existing_links() -> Set[str]:
 
 
 def _build_deals_all_row_from_source(row: Dict[str, Any], source: str) -> Dict[str, Any]:
-    """Adaptar una fila de deals_traveldealz / deals_secretflying a deals_all."""
+    """Adapt a row from deals_traveldealz / deals_secretflying to deals_all."""
 
     return {
         "title": row.get("title"),
@@ -76,7 +76,7 @@ def _sync_table(table: str, source_label: str, existing_links: Set[str]) -> int:
     try:
         rsp = _client.table(table).select("*").execute()
     except Exception as e:
-        print(f"[sync_deals_all] Error leyendo {table}:", repr(e))
+        print(f"[sync_deals_all] Error reading {table}:", repr(e))
         return 0
 
     rows = getattr(rsp, "data", []) or []
@@ -89,22 +89,22 @@ def _sync_table(table: str, source_label: str, existing_links: Set[str]) -> int:
         to_insert.append(_build_deals_all_row_from_source(r, source_label))
 
     if not to_insert:
-        print(f"[sync_deals_all] Nada que insertar desde {table} (todo ya en deals_all)")
+        print(f"[sync_deals_all] Nothing to insert from {table} (everything already in deals_all)")
         return 0
 
     try:
         ins = _client.table("deals_all").insert(to_insert).execute()
         inserted = len(getattr(ins, "data", []) or [])
-        print(f"[sync_deals_all] Insertadas {inserted} filas nuevas desde {table}")
+        print(f"[sync_deals_all] Inserted {inserted} new rows from {table}")
         return inserted
     except Exception as e:
-        print(f"[sync_deals_all] Error insertando en deals_all desde {table}:", repr(e))
+        print(f"[sync_deals_all] Error inserting into deals_all from {table}:", repr(e))
         return 0
 
 
 def main() -> None:
     if not _client:
-        print("[sync_deals_all] Supabase client no configurado")
+        print("[sync_deals_all] Supabase client not configured")
         return
 
     existing = _load_existing_links()
