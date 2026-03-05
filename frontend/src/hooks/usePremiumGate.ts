@@ -11,43 +11,41 @@ interface PremiumGateResult {
   user: User | null;
 }
 
-async function checkPremium(token: string): Promise<{ isPremium: boolean; tier: string }> {
-  const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-premium`,
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    }
-  );
+async function fetchSubscriberTier(email: string): Promise<{ isPremium: boolean; tier: string }> {
+  const { data, error } = await supabase
+    .from("subscribers")
+    .select("tier, status")
+    .eq("email", email.toLowerCase())
+    .single();
 
-  if (!response.ok) {
+  if (error || !data) {
     return { isPremium: false, tier: "free" };
   }
 
-  const data = await response.json();
-  return { isPremium: data.isPremium ?? false, tier: data.tier ?? "free" };
+  if (data.status === "unsubscribed") {
+    return { isPremium: false, tier: "free" };
+  }
+
+  return {
+    isPremium: data.tier === "premium",
+    tier: data.tier ?? "free",
+  };
 }
 
 export function usePremiumGate(): PremiumGateResult {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user ?? null);
-        setToken(session?.access_token ?? null);
         setAuthLoading(false);
       }
     );
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
-      setToken(session?.access_token ?? null);
       setAuthLoading(false);
     });
 
@@ -55,10 +53,10 @@ export function usePremiumGate(): PremiumGateResult {
   }, []);
 
   const { data: premiumData, isLoading: premiumLoading } = useQuery({
-    queryKey: ["premium-check", user?.id],
-    queryFn: () => checkPremium(token!),
-    enabled: !!token && !!user,
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    queryKey: ["subscriber-tier", user?.email],
+    queryFn: () => fetchSubscriberTier(user!.email!),
+    enabled: !!user?.email,
+    staleTime: 2 * 60 * 1000,
     retry: 1,
   });
 

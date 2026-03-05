@@ -46,8 +46,21 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     if (existing?.status === "active") {
+      // Already subscribed — send them the welcome email anyway (they re-requested it)
+      // but do NOT re-upsert (preserves their current tier, including premium)
+      try {
+        await resend.emails.send({
+          from: "SnapFare <noreply@basics-db.ch>",
+          to: [normalizedEmail],
+          subject: "Willkommen bei SnapFare! 🎉",
+          html: buildWelcomeEmailHtml(),
+        });
+        console.log("Welcome email resent to existing subscriber:", normalizedEmail);
+      } catch (emailErr) {
+        console.error("Email send error (existing subscriber):", emailErr);
+      }
       return new Response(
-        JSON.stringify({ success: true, message: "Already subscribed" }),
+        JSON.stringify({ success: true, message: "Already subscribed, email sent" }),
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }

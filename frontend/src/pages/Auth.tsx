@@ -72,13 +72,20 @@ const Auth = () => {
 
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: { emailRedirectTo: `${window.location.origin}/dashboard` },
       });
       if (error) {
         toast({ title: "Registrierung fehlgeschlagen", description: error.message, variant: "destructive" });
+      } else if (data.user?.identities?.length === 0) {
+        // Email already registered — signUp silently does nothing for security reasons
+        toast({
+          title: "E-Mail bereits registriert",
+          description: "Melde dich mit deinem bestehenden Konto an oder setze dein Passwort zurück.",
+        });
+        setTab("login");
       } else {
         toast({
           title: "Fast geschafft!",
