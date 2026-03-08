@@ -94,11 +94,17 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
       ]);
     } catch (err) {
       console.error("Chat send error:", err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const displayMsg = errMsg.startsWith("HTTP 5")
+        ? "Server-Fehler (500). Bitte versuche es nochmal."
+        : errMsg.startsWith("HTTP 4")
+        ? "Authentifizierungs-Fehler. Bitte neu einloggen."
+        : "Es ist ein Fehler aufgetreten. Bitte versuche es nochmal.";
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "Es ist ein Fehler aufgetreten. Bitte versuche es nochmal.",
+          content: displayMsg,
         },
       ]);
     } finally {
