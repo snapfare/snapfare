@@ -14,8 +14,6 @@ interface UserPrefs {
   max_trip_days: number | null;
   preferred_seasons: string[];
   flight_types: string[];
-  include_miles_deals: boolean;
-  include_budget_deals: boolean;
 }
 
 async function fetchPersonalizedDeals(
@@ -49,15 +47,6 @@ async function fetchPersonalizedDeals(
   if (prefs && (prefs.preferred_regions?.length ?? 0) > 0) {
     deals = deals.filter((d) =>
       matchesRegion(d.destination_iata, prefs.preferred_regions)
-    );
-  }
-
-  // Filter out miles deals if user doesn't want them
-  if (prefs && !prefs.include_miles_deals) {
-    deals = deals.filter(
-      (d) =>
-        !d.cabin_class?.toLowerCase().includes("business") &&
-        !d.cabin_class?.toLowerCase().includes("first")
     );
   }
 

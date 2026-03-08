@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,12 +53,10 @@ interface PrefsForm {
   max_trip_days: string;
   preferred_seasons: string[];
   flight_types: string[];
-  include_miles_deals: boolean;
-  include_budget_deals: boolean;
 }
 
 const DEFAULT_PREFS: PrefsForm = {
-  preferred_origins: ["ZRH"],
+  preferred_origins: ["ZRH", "GVA", "BSL"],
   preferred_regions: [],
   max_price_chf: "",
   cabin_classes: ["Economy"],
@@ -66,8 +64,6 @@ const DEFAULT_PREFS: PrefsForm = {
   max_trip_days: "",
   preferred_seasons: ["any"],
   flight_types: ["short_haul", "long_haul"],
-  include_miles_deals: true,
-  include_budget_deals: true,
 };
 
 function toggleItem<T>(arr: T[], item: T): T[] {
@@ -75,6 +71,13 @@ function toggleItem<T>(arr: T[], item: T): T[] {
 }
 
 const DEALS_PER_PAGE = 6;
+
+function getTimeGreeting(): string {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return "Guten Morgen";
+  if (h >= 12 && h < 18) return "Guten Mittag";
+  return "Guten Abend";
+}
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 const Dashboard = () => {
@@ -85,6 +88,7 @@ const Dashboard = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [visibleCount, setVisibleCount] = useState(DEALS_PER_PAGE);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const onboardingDismissed = useRef(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -108,15 +112,16 @@ const Dashboard = () => {
         max_trip_days: prefs.max_trip_days ? String(prefs.max_trip_days) : "",
         preferred_seasons: prefs.preferred_seasons ?? ["any"],
         flight_types: prefs.flight_types ?? ["short_haul", "long_haul"],
-        include_miles_deals: prefs.include_miles_deals ?? true,
-        include_budget_deals: prefs.include_budget_deals ?? true,
       });
 
-      // Check onboarding
-      if ((prefs as any)?.onboarding_completed === false || (prefs as any)?.onboarding_completed === null) {
-        setShowOnboarding(true);
+      // Only show onboarding if not yet completed and not already dismissed this session
+      if (!onboardingDismissed.current) {
+        const completed = (prefs as any)?.onboarding_completed;
+        if (completed === false || completed === null || completed === undefined) {
+          setShowOnboarding(true);
+        }
       }
-    } else if (!dealsLoading && user && prefs === null) {
+    } else if (!dealsLoading && user && prefs === null && !onboardingDismissed.current) {
       // No preferences record at all → new user, show onboarding
       setShowOnboarding(true);
     }
@@ -150,8 +155,6 @@ const Dashboard = () => {
         max_trip_days: form.max_trip_days ? parseInt(form.max_trip_days, 10) : null,
         preferred_seasons: form.preferred_seasons,
         flight_types: form.flight_types,
-        include_miles_deals: form.include_miles_deals,
-        include_budget_deals: form.include_budget_deals,
         updated_at: new Date().toISOString(),
       };
 
@@ -200,6 +203,7 @@ const Dashboard = () => {
           userEmail={user.email ?? ""}
           userName={userName}
           onComplete={() => {
+            onboardingDismissed.current = true;
             setShowOnboarding(false);
             queryClient.invalidateQueries({ queryKey: ["user-preferences", user.id] });
             queryClient.invalidateQueries({ queryKey: ["personalized-deals", user.id] });
@@ -211,7 +215,6 @@ const Dashboard = () => {
       <header className="bg-slate-900 border-b border-white/10 sticky top-0 z-40 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <Plane className="w-4 h-4 text-green-400" />
             <span className="font-bold text-xl bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">
               SnapFare
             </span>
@@ -223,11 +226,6 @@ const Dashboard = () => {
           </Link>
 
           <div className="flex items-center gap-2">
-            {userName && (
-              <span className="text-sm text-gray-400 hidden sm:inline">
-                Hallo, {userName}
-              </span>
-            )}
             <Button
               variant="outline"
               size="sm"
@@ -254,9 +252,9 @@ const Dashboard = () => {
         {/* Welcome */}
         <div className="mb-6">
           <h1 className="text-xl font-bold text-white">
-            {userName ? `Hallo ${userName} 👋` : "Dein Dashboard"}
+            {userName ? `${getTimeGreeting()}, ${userName} 👋` : getTimeGreeting()}
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">Deine personalisierten Flugdeals</p>
+          <p className="text-sm text-gray-500 mt-0.5">Willkommen auf deinem persönlichen Dashboard – du kannst entweder durch die Liste deiner Deals scrollen oder deinem persönlichen Agent eine Suchanfrage geben!</p>
 
           {activeFilters.length > 0 && (
             <div className="flex flex-wrap gap-2 items-center mt-3">
@@ -417,40 +415,6 @@ const Dashboard = () => {
                     </div>
                   </div>
 
-                  {/* Content toggles */}
-                  <fieldset>
-                    <legend className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                      Deal-Typen
-                    </legend>
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          id="include-miles"
-                          checked={form.include_miles_deals}
-                          onCheckedChange={(c) =>
-                            setForm((f) => ({ ...f, include_miles_deals: c as boolean }))
-                          }
-                          className="border-white/30 data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
-                        />
-                        <Label htmlFor="include-miles" className="text-sm cursor-pointer font-normal text-gray-300">
-                          Business / Meilen
-                        </Label>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          id="include-budget"
-                          checked={form.include_budget_deals}
-                          onCheckedChange={(c) =>
-                            setForm((f) => ({ ...f, include_budget_deals: c as boolean }))
-                          }
-                          className="border-white/30 data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
-                        />
-                        <Label htmlFor="include-budget" className="text-sm cursor-pointer font-normal text-gray-300">
-                          Budget / Economy
-                        </Label>
-                      </div>
-                    </div>
-                  </fieldset>
                 </div>
 
                 <Button

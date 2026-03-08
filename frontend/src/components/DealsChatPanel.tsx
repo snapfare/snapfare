@@ -119,9 +119,6 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
             <Sparkles className="w-4 h-4 text-white" />
           </div>
           <span className="text-white font-semibold text-sm">SnapFare Agent</span>
-          <span className="text-xs text-gray-500 bg-white/5 px-2 py-0.5 rounded-full border border-white/10">
-            KI
-          </span>
         </div>
         <span className="text-xs text-gray-600">
           {userMessageCount}/{MAX_MESSAGES} Nachrichten

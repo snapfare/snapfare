@@ -59,6 +59,7 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ userId, userEmail, 
           user_id: userId,
           email: userEmail,
           full_name: userName || null,
+          preferred_origins: ['ZRH', 'GVA', 'BSL'],
           max_price_chf: budget ?? null,
           cabin_classes: cabinClasses,
           preferred_regions: selectedRegions,
@@ -69,7 +70,8 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ userId, userEmail, 
       if (error) throw error;
 
       onComplete();
-    } catch {
+    } catch (err) {
+      console.error("[OnboardingScreen] upsert error:", err);
       toast({ title: "Fehler", description: "Konnte nicht gespeichert werden. Versuche es erneut.", variant: "destructive" });
     } finally {
       setIsSaving(false);
