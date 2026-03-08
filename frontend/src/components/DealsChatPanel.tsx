@@ -77,7 +77,9 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
       );
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        const errorBody = await response.text().catch(() => "");
+        console.error(`Chat API error ${response.status}:`, errorBody);
+        throw new Error(`HTTP ${response.status}: ${errorBody}`);
       }
 
       const data = await response.json();
@@ -90,7 +92,8 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
           deals: (data.deals ?? []).slice(0, 3),
         },
       ]);
-    } catch {
+    } catch (err) {
+      console.error("Chat send error:", err);
       setMessages((prev) => [
         ...prev,
         {
