@@ -10,10 +10,10 @@ interface DealCardProps {
 }
 
 const CABIN_COLORS: Record<string, string> = {
-  Economy: "bg-blue-100 text-blue-700",
-  Business: "bg-amber-100 text-amber-700",
-  First: "bg-purple-100 text-purple-700",
-  "Premium Economy": "bg-teal-100 text-teal-700",
+  Economy: "bg-green-500/20 text-green-300 border-green-500/30",
+  Business: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+  First: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+  "Premium Economy": "bg-teal-500/20 text-teal-300 border-teal-500/30",
 };
 
 function formatDuration(minutes: number | null): string {
@@ -34,14 +34,14 @@ function formatBaggage(deal: Deal): string {
 
 const DealCard: React.FC<DealCardProps> = ({ deal, compact = false }) => {
   const cabinBadgeClass =
-    CABIN_COLORS[deal.cabin_class ?? "Economy"] ?? "bg-gray-100 text-gray-700";
+    CABIN_COLORS[deal.cabin_class ?? "Economy"] ?? "bg-white/10 text-gray-300 border-white/20";
 
   const ctaUrl = deal.skyscanner_url ?? deal.link ?? "#";
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
+    <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden flex flex-col hover:border-white/20 transition-all duration-200 hover:bg-white/8">
       {/* Image */}
-      {deal.image && (
+      {deal.image && !compact && (
         <div className="relative h-36 overflow-hidden">
           <img
             src={deal.image}
@@ -49,26 +49,40 @@ const DealCard: React.FC<DealCardProps> = ({ deal, compact = false }) => {
             className="w-full h-full object-cover"
             loading="lazy"
           />
+          {/* Dark gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent" />
           {/* Tier badge */}
           {deal.tier === "premium" && (
-            <div className="absolute top-2 right-2 bg-amber-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+            <div className="absolute top-2 right-2 bg-amber-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">
               Premium
             </div>
           )}
+          {/* Route overlay on image */}
+          <div className="absolute bottom-2 left-3 flex items-center gap-1.5">
+            <span className="font-bold text-white text-sm drop-shadow">
+              {deal.origin_iata ?? deal.origin}
+            </span>
+            <Plane className="w-3 h-3 text-white/70" />
+            <span className="font-bold text-white text-sm drop-shadow">
+              {deal.destination_iata ?? deal.destination}
+            </span>
+          </div>
         </div>
       )}
 
       <div className="p-4 flex flex-col flex-1">
-        {/* Route */}
-        <div className="flex items-center gap-1 mb-1">
-          <span className="font-bold text-gray-900 text-sm">
-            {deal.origin_iata ?? deal.origin}
-          </span>
-          <Plane className="w-3 h-3 text-gray-400 mx-1" />
-          <span className="font-bold text-gray-900 text-sm">
-            {deal.destination_iata ?? deal.destination}
-          </span>
-        </div>
+        {/* Route (when no image, or compact) */}
+        {(!deal.image || compact) && (
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="font-bold text-white text-sm">
+              {deal.origin_iata ?? deal.origin}
+            </span>
+            <Plane className="w-3 h-3 text-gray-400 mx-0.5" />
+            <span className="font-bold text-white text-sm">
+              {deal.destination_iata ?? deal.destination}
+            </span>
+          </div>
+        )}
 
         {/* City names */}
         {!compact && (
@@ -79,8 +93,8 @@ const DealCard: React.FC<DealCardProps> = ({ deal, compact = false }) => {
 
         {/* Airline + cabin */}
         <div className="flex items-center gap-2 mb-3">
-          <span className="text-xs text-gray-600 truncate">{deal.airline}</span>
-          <Badge className={`text-[10px] px-1.5 py-0 ${cabinBadgeClass} border-0`}>
+          <span className="text-xs text-gray-400 truncate">{deal.airline}</span>
+          <Badge className={`text-[10px] px-1.5 py-0 border ${cabinBadgeClass} shrink-0`}>
             {deal.cabin_class}
           </Badge>
         </div>
@@ -95,42 +109,44 @@ const DealCard: React.FC<DealCardProps> = ({ deal, compact = false }) => {
               </span>
             )}
             {deal.stops !== null && (
-              <span>
+              <span className="text-gray-500">
                 {deal.stops === 0 ? "Nonstop" : `${deal.stops} Stopp`}
               </span>
             )}
-            <span className="flex items-center gap-1">
-              <Luggage className="w-3 h-3" />
-              {formatBaggage(deal)}
-            </span>
+            {deal.baggage_included !== null && (
+              <span className="flex items-center gap-1">
+                <Luggage className="w-3 h-3" />
+                {formatBaggage(deal)}
+              </span>
+            )}
           </div>
         )}
 
         {/* Travel period */}
         {deal.travel_period_display && !compact && (
-          <p className="text-[11px] text-gray-400 mb-3">{deal.travel_period_display}</p>
+          <p className="text-[11px] text-gray-500 mb-3">{deal.travel_period_display}</p>
         )}
 
         {/* Miles */}
         {deal.miles && !compact && (
-          <p className="text-[11px] text-indigo-600 mb-3">✈ {deal.miles}</p>
+          <p className="text-[11px] text-blue-400 mb-3">✈ {deal.miles}</p>
         )}
 
         {/* Price + CTA */}
-        <div className="mt-auto flex items-center justify-between pt-2 border-t border-gray-50">
+        <div className="mt-auto flex items-center justify-between pt-3 border-t border-white/5">
           <div>
-            <span className="text-xl font-black text-blue-600">
+            <span className="text-xl font-black text-white">
               {deal.price ? `CHF ${Math.round(deal.price)}` : "–"}
             </span>
-            <span className="text-xs text-gray-400 ml-1">/ Person</span>
+            <span className="text-xs text-gray-500 ml-1">/ Person</span>
           </div>
 
           <a href={ctaUrl} target="_blank" rel="noopener noreferrer">
             <Button
               size="sm"
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 h-8 gap-1"
+              className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white text-xs px-3 h-8 gap-1 border-0"
             >
-              Ansehen
+              Buchen
               <ExternalLink className="w-3 h-3" />
             </Button>
           </a>

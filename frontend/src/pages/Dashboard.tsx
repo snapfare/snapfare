@@ -7,13 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, Link } from "react-router-dom";
-import { LogOut, Settings, Plane, SlidersHorizontal, X, Loader2 } from "lucide-react";
+import {
+  LogOut, Settings, Plane, SlidersHorizontal, X, Loader2, ChevronDown, Sparkles,
+} from "lucide-react";
 import { usePremiumGate } from "@/hooks/usePremiumGate";
 import { usePersonalizedDeals } from "@/hooks/usePersonalizedDeals";
 import { useQueryClient } from "@tanstack/react-query";
 import DealCard from "@/components/DealCard";
 import DealsChatPanel from "@/components/DealsChatPanel";
-import PremiumRequired from "@/pages/PremiumRequired";
+import OnboardingScreen from "@/components/dashboard/OnboardingScreen";
 import { REGION_LABELS } from "@/lib/regionMapping";
 import type { Region } from "@/lib/regionMapping";
 
@@ -72,16 +74,27 @@ function toggleItem<T>(arr: T[], item: T): T[] {
   return arr.includes(item) ? arr.filter((x) => x !== item) : [...arr, item];
 }
 
+const DEALS_PER_PAGE = 6;
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 const Dashboard = () => {
-  const { isLoading: authLoading, isAuthenticated, isPremium, user } = usePremiumGate();
+  const { isLoading: authLoading, isAuthenticated, isPremium, tier, user } = usePremiumGate();
   const { deals, prefs, isLoading: dealsLoading, refetchDeals } = usePersonalizedDeals(user?.id);
   const [showPrefs, setShowPrefs] = useState(false);
   const [form, setForm] = useState<PrefsForm>(DEFAULT_PREFS);
   const [isSaving, setIsSaving] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(DEALS_PER_PAGE);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // Get user display name
+  const userName: string =
+    (prefs as any)?.full_name ||
+    user?.user_metadata?.full_name ||
+    user?.email?.split("@")[0] ||
+    "";
 
   // Populate form when prefs load
   useEffect(() => {
@@ -98,8 +111,16 @@ const Dashboard = () => {
         include_miles_deals: prefs.include_miles_deals ?? true,
         include_budget_deals: prefs.include_budget_deals ?? true,
       });
+
+      // Check onboarding
+      if ((prefs as any)?.onboarding_completed === false || (prefs as any)?.onboarding_completed === null) {
+        setShowOnboarding(true);
+      }
+    } else if (!dealsLoading && user && prefs === null) {
+      // No preferences record at all → new user, show onboarding
+      setShowOnboarding(true);
     }
-  }, [prefs]);
+  }, [prefs, dealsLoading, user]);
 
   // Redirect unauthenticated users
   useEffect(() => {
@@ -144,7 +165,7 @@ const Dashboard = () => {
       queryClient.invalidateQueries({ queryKey: ["user-preferences", user.id] });
       queryClient.invalidateQueries({ queryKey: ["personalized-deals", user.id] });
       setShowPrefs(false);
-    } catch (err) {
+    } catch {
       toast({ title: "Fehler", description: "Speichern fehlgeschlagen.", variant: "destructive" });
     } finally {
       setIsSaving(false);
@@ -154,45 +175,64 @@ const Dashboard = () => {
   // Loading
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
+        <Loader2 className="w-8 h-8 text-green-400 animate-spin" />
       </div>
     );
   }
 
-  // Premium gate
-  if (isAuthenticated && !isPremium) {
-    return <PremiumRequired />;
-  }
-
-  // Active filter chips for display
+  // Active filter chips
   const activeFilters: string[] = [];
   if (prefs?.preferred_origins?.length) activeFilters.push(prefs.preferred_origins.join(", "));
   if (prefs?.preferred_regions?.length)
     activeFilters.push(...prefs.preferred_regions.map((r) => REGION_LABELS[r as Region] ?? r));
   if (prefs?.max_price_chf) activeFilters.push(`≤ CHF ${prefs.max_price_chf}`);
 
+  const visibleDeals = deals.slice(0, visibleCount);
+  const hasMore = visibleCount < deals.length;
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-900">
+      {/* Onboarding overlay */}
+      {showOnboarding && user && (
+        <OnboardingScreen
+          userId={user.id}
+          userEmail={user.email ?? ""}
+          userName={userName}
+          onComplete={() => {
+            setShowOnboarding(false);
+            queryClient.invalidateQueries({ queryKey: ["user-preferences", user.id] });
+            queryClient.invalidateQueries({ queryKey: ["personalized-deals", user.id] });
+          }}
+        />
+      )}
+
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
+      <header className="bg-slate-900 border-b border-white/10 sticky top-0 z-40 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-              <Plane className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-bold text-gray-900">SnapFare</span>
-            <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px] ml-1 py-0">
-              Premium
-            </Badge>
+            <Plane className="w-4 h-4 text-green-400" />
+            <span className="font-bold text-xl bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">
+              SnapFare
+            </span>
+            {isPremium && (
+              <Badge className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] ml-1 py-0">
+                Premium
+              </Badge>
+            )}
           </Link>
 
           <div className="flex items-center gap-2">
+            {userName && (
+              <span className="text-sm text-gray-400 hidden sm:inline">
+                Hallo, {userName}
+              </span>
+            )}
             <Button
               variant="outline"
               size="sm"
               onClick={() => setShowPrefs(!showPrefs)}
-              className="flex items-center gap-1.5 text-gray-700 h-8"
+              className="flex items-center gap-1.5 bg-white/5 border-white/20 text-gray-300 hover:bg-white/10 hover:text-white h-8"
             >
               <SlidersHorizontal className="w-4 h-4" />
               <span className="hidden sm:inline text-xs">Präferenzen</span>
@@ -201,7 +241,7 @@ const Dashboard = () => {
               variant="ghost"
               size="sm"
               onClick={handleSignOut}
-              className="flex items-center gap-1.5 text-gray-500 h-8"
+              className="flex items-center gap-1.5 text-gray-500 hover:text-gray-300 h-8"
             >
               <LogOut className="w-4 h-4" />
               <span className="hidden sm:inline text-xs">Abmelden</span>
@@ -211,37 +251,30 @@ const Dashboard = () => {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-        {/* Welcome + filters */}
-        <div className="mb-5">
-          <h1 className="text-xl font-bold text-gray-900">
-            Hallo {user?.email?.split("@")[0]} 👋
+        {/* Welcome */}
+        <div className="mb-6">
+          <h1 className="text-xl font-bold text-white">
+            {userName ? `Hallo ${userName} 👋` : "Dein Dashboard"}
           </h1>
-          <p className="text-sm text-gray-500 mb-3">Deine personalisierten Flugdeals</p>
+          <p className="text-sm text-gray-500 mt-0.5">Deine personalisierten Flugdeals</p>
 
-          {activeFilters.length > 0 ? (
-            <div className="flex flex-wrap gap-2 items-center">
+          {activeFilters.length > 0 && (
+            <div className="flex flex-wrap gap-2 items-center mt-3">
               {activeFilters.map((f) => (
                 <Badge
                   key={f}
-                  className="text-xs bg-blue-50 text-blue-700 border-blue-100 border"
+                  className="text-xs bg-green-500/10 text-green-300 border border-green-500/20"
                 >
                   {f}
                 </Badge>
               ))}
               <button
                 onClick={() => setShowPrefs(true)}
-                className="text-xs text-gray-400 hover:text-blue-600 underline"
+                className="text-xs text-gray-500 hover:text-gray-300 underline"
               >
                 Ändern
               </button>
             </div>
-          ) : (
-            <p className="text-xs text-gray-400">
-              Keine Filter aktiv — zeige Top-Deals nach Score.{" "}
-              <button onClick={() => setShowPrefs(true)} className="text-blue-500 underline">
-                Präferenzen setzen
-              </button>
-            </p>
           )}
         </div>
 
@@ -249,13 +282,13 @@ const Dashboard = () => {
           {/* Preferences side panel */}
           {showPrefs && (
             <aside className="w-72 flex-shrink-0 hidden lg:block">
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 sticky top-24 max-h-[calc(100vh-8rem)] overflow-y-auto">
+              <div className="bg-white/5 border border-white/10 rounded-xl p-5 sticky top-24 max-h-[calc(100vh-8rem)] overflow-y-auto">
                 <div className="flex items-center justify-between mb-5">
-                  <h2 className="font-semibold text-gray-800 flex items-center gap-2 text-sm">
-                    <Settings className="w-4 h-4 text-blue-600" />
+                  <h2 className="font-semibold text-white flex items-center gap-2 text-sm">
+                    <Settings className="w-4 h-4 text-green-400" />
                     Präferenzen
                   </h2>
-                  <button onClick={() => setShowPrefs(false)} className="text-gray-400 hover:text-gray-600">
+                  <button onClick={() => setShowPrefs(false)} className="text-gray-500 hover:text-gray-300">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -263,7 +296,7 @@ const Dashboard = () => {
                 <div className="space-y-5">
                   {/* Departure airports */}
                   <fieldset>
-                    <legend className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    <legend className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
                       Abflughafen
                     </legend>
                     <div className="space-y-2">
@@ -278,8 +311,9 @@ const Dashboard = () => {
                                 preferred_origins: toggleItem(f.preferred_origins, o.code),
                               }))
                             }
+                            className="border-white/30 data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
                           />
-                          <Label htmlFor={`origin-${o.code}`} className="text-sm cursor-pointer font-normal">
+                          <Label htmlFor={`origin-${o.code}`} className="text-sm cursor-pointer font-normal text-gray-300">
                             {o.label}
                           </Label>
                         </div>
@@ -289,7 +323,7 @@ const Dashboard = () => {
 
                   {/* Destination regions */}
                   <fieldset>
-                    <legend className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    <legend className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
                       Reiseregion
                     </legend>
                     <div className="space-y-2">
@@ -304,21 +338,22 @@ const Dashboard = () => {
                                 preferred_regions: toggleItem(f.preferred_regions, r.value),
                               }))
                             }
+                            className="border-white/30 data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
                           />
-                          <Label htmlFor={`region-${r.value}`} className="text-sm cursor-pointer font-normal">
+                          <Label htmlFor={`region-${r.value}`} className="text-sm cursor-pointer font-normal text-gray-300">
                             {r.label}
                           </Label>
                         </div>
                       ))}
                     </div>
                     {form.preferred_regions.length === 0 && (
-                      <p className="text-[11px] text-gray-400 mt-1">Alle Regionen</p>
+                      <p className="text-[11px] text-gray-600 mt-1">Alle Regionen</p>
                     )}
                   </fieldset>
 
                   {/* Budget */}
                   <div>
-                    <Label htmlFor="max-price" className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2 block">
+                    <Label htmlFor="max-price" className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2 block">
                       Max. Budget CHF
                     </Label>
                     <Input
@@ -327,13 +362,13 @@ const Dashboard = () => {
                       placeholder="Kein Limit"
                       value={form.max_price_chf}
                       onChange={(e) => setForm((f) => ({ ...f, max_price_chf: e.target.value }))}
-                      className="h-8 text-sm"
+                      className="h-8 text-sm bg-white/5 border-white/10 text-white placeholder:text-gray-600"
                     />
                   </div>
 
                   {/* Cabin */}
                   <fieldset>
-                    <legend className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    <legend className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
                       Kabine
                     </legend>
                     <div className="space-y-2">
@@ -348,8 +383,9 @@ const Dashboard = () => {
                                 cabin_classes: toggleItem(f.cabin_classes, c.value),
                               }))
                             }
+                            className="border-white/30 data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
                           />
-                          <Label htmlFor={`cabin-${c.value}`} className="text-sm cursor-pointer font-normal">
+                          <Label htmlFor={`cabin-${c.value}`} className="text-sm cursor-pointer font-normal text-gray-300">
                             {c.label}
                           </Label>
                         </div>
@@ -359,7 +395,7 @@ const Dashboard = () => {
 
                   {/* Trip duration */}
                   <div>
-                    <Label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2 block">
+                    <Label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2 block">
                       Reisedauer (Tage)
                     </Label>
                     <div className="flex items-center gap-2">
@@ -368,22 +404,22 @@ const Dashboard = () => {
                         placeholder="Min"
                         value={form.min_trip_days}
                         onChange={(e) => setForm((f) => ({ ...f, min_trip_days: e.target.value }))}
-                        className="h-8 text-sm"
+                        className="h-8 text-sm bg-white/5 border-white/10 text-white placeholder:text-gray-600"
                       />
-                      <span className="text-gray-300">–</span>
+                      <span className="text-gray-600">–</span>
                       <Input
                         type="number"
                         placeholder="Max"
                         value={form.max_trip_days}
                         onChange={(e) => setForm((f) => ({ ...f, max_trip_days: e.target.value }))}
-                        className="h-8 text-sm"
+                        className="h-8 text-sm bg-white/5 border-white/10 text-white placeholder:text-gray-600"
                       />
                     </div>
                   </div>
 
                   {/* Content toggles */}
                   <fieldset>
-                    <legend className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    <legend className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
                       Deal-Typen
                     </legend>
                     <div className="space-y-2">
@@ -394,8 +430,9 @@ const Dashboard = () => {
                           onCheckedChange={(c) =>
                             setForm((f) => ({ ...f, include_miles_deals: c as boolean }))
                           }
+                          className="border-white/30 data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
                         />
-                        <Label htmlFor="include-miles" className="text-sm cursor-pointer font-normal">
+                        <Label htmlFor="include-miles" className="text-sm cursor-pointer font-normal text-gray-300">
                           Business / Meilen
                         </Label>
                       </div>
@@ -406,8 +443,9 @@ const Dashboard = () => {
                           onCheckedChange={(c) =>
                             setForm((f) => ({ ...f, include_budget_deals: c as boolean }))
                           }
+                          className="border-white/30 data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
                         />
-                        <Label htmlFor="include-budget" className="text-sm cursor-pointer font-normal">
+                        <Label htmlFor="include-budget" className="text-sm cursor-pointer font-normal text-gray-300">
                           Budget / Economy
                         </Label>
                       </div>
@@ -418,7 +456,7 @@ const Dashboard = () => {
                 <Button
                   onClick={handleSavePreferences}
                   disabled={isSaving}
-                  className="w-full mt-5 bg-gradient-to-r from-blue-600 to-purple-600 text-white h-9 text-sm"
+                  className="w-full mt-5 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white h-9 text-sm"
                 >
                   {isSaving ? (
                     <><Loader2 className="w-3 h-3 mr-2 animate-spin" />Speichern...</>
@@ -430,46 +468,77 @@ const Dashboard = () => {
             </aside>
           )}
 
-          {/* Deals grid */}
-          <div className="flex-1 min-w-0">
-            {dealsLoading ? (
-              <div className="flex items-center justify-center py-24">
-                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+          {/* Main content */}
+          <div className="flex-1 min-w-0 space-y-6">
+            {/* SnapFare Agent */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="w-4 h-4 text-green-400" />
+                <h2 className="text-sm font-semibold text-white">SnapFare Agent</h2>
               </div>
-            ) : deals.length === 0 ? (
-              <div className="text-center py-24 text-gray-500">
-                <Plane className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <p className="font-medium mb-1">Keine Deals gefunden</p>
-                <p className="text-sm text-gray-400">
-                  Passe deine Präferenzen an oder warte auf neue Deals.
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4 text-sm"
-                  onClick={() => setShowPrefs(true)}
-                >
-                  Präferenzen öffnen
-                </Button>
+              <DealsChatPanel userName={userName} />
+            </div>
+
+            {/* Deals section */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <Plane className="w-4 h-4 text-green-400" />
+                  Deine Deals
+                </h2>
+                {deals.length > 0 && (
+                  <span className="text-xs text-gray-600">
+                    {Math.min(visibleCount, deals.length)} von {deals.length}
+                  </span>
+                )}
               </div>
-            ) : (
-              <>
-                <p className="text-xs text-gray-400 mb-4">
-                  {deals.length} Deal{deals.length !== 1 ? "s" : ""} gefunden
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {deals.map((deal) => (
-                    <DealCard key={deal.id} deal={deal} />
-                  ))}
+
+              {dealsLoading ? (
+                <div className="flex items-center justify-center py-24">
+                  <Loader2 className="w-8 h-8 text-green-400 animate-spin" />
                 </div>
-              </>
-            )}
+              ) : deals.length === 0 ? (
+                <div className="text-center py-24 bg-white/5 border border-white/10 rounded-xl">
+                  <Plane className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                  <p className="font-medium text-gray-300 mb-1">Keine Deals gefunden</p>
+                  <p className="text-sm text-gray-500">
+                    Passe deine Präferenzen an oder warte auf neue Deals.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 text-sm bg-white/5 border-white/20 text-gray-300 hover:bg-white/10"
+                    onClick={() => setShowPrefs(true)}
+                  >
+                    Präferenzen öffnen
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {visibleDeals.map((deal) => (
+                      <DealCard key={deal.id} deal={deal} />
+                    ))}
+                  </div>
+
+                  {hasMore && (
+                    <div className="text-center mt-6">
+                      <Button
+                        variant="outline"
+                        onClick={() => setVisibleCount((c) => c + DEALS_PER_PAGE)}
+                        className="bg-white/5 border-white/20 text-gray-300 hover:bg-white/10 hover:text-white gap-2"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                        Mehr Deals laden ({deals.length - visibleCount} weitere)
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
-
-      {/* AI Chat Panel (floating) */}
-      <DealsChatPanel />
     </div>
   );
 };

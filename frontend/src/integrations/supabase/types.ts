@@ -227,6 +227,8 @@ export type Database = {
           id: string
           user_id: string
           email: string
+          full_name: string | null
+          onboarding_completed: boolean | null
           preferred_origins: string[]
           preferred_regions: string[]
           max_price_chf: number | null
@@ -244,6 +246,8 @@ export type Database = {
           id?: string
           user_id: string
           email: string
+          full_name?: string | null
+          onboarding_completed?: boolean | null
           preferred_origins?: string[]
           preferred_regions?: string[]
           max_price_chf?: number | null
@@ -261,6 +265,8 @@ export type Database = {
           id?: string
           user_id?: string
           email?: string
+          full_name?: string | null
+          onboarding_completed?: boolean | null
           preferred_origins?: string[]
           preferred_regions?: string[]
           max_price_chf?: number | null
@@ -283,6 +289,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      agent_conversations: {
+        Row: {
+          id: string
+          user_id: string
+          session_id: string
+          role: string
+          content: string
+          message_index: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          session_id: string
+          role: string
+          content: string
+          message_index: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          session_id?: string
+          role?: string
+          content?: string
+          message_index?: number
+          created_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {

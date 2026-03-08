@@ -2,17 +2,36 @@ import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Plane } from 'lucide-react';
 
 type AuthTab = "login" | "register" | "reset";
 
+function translateAuthError(message: string): string {
+  if (message.includes("Invalid login credentials")) {
+    return "E-Mail oder Passwort ist falsch.";
+  }
+  if (message.includes("Email not confirmed")) {
+    return "E-Mail-Adresse noch nicht bestätigt. Bitte überprüfe deinen Posteingang.";
+  }
+  if (message.includes("already registered") || message.includes("User already registered")) {
+    return "Diese E-Mail ist bereits registriert. Melde dich einfach an.";
+  }
+  if (message.includes("Password should be at least")) {
+    return "Das Passwort muss mindestens 6 Zeichen lang sein.";
+  }
+  if (message.includes("rate limit") || message.includes("too many requests")) {
+    return "Zu viele Anfragen. Bitte warte kurz und versuche es erneut.";
+  }
+  return message;
+}
+
 const Auth = () => {
   const [tab, setTab] = useState<AuthTab>("login");
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -47,7 +66,7 @@ const Auth = () => {
       if (error) {
         toast({
           title: "Anmeldung fehlgeschlagen",
-          description: error.message,
+          description: translateAuthError(error.message),
           variant: "destructive",
         });
       }
@@ -75,12 +94,14 @@ const Auth = () => {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+        options: {
+          emailRedirectTo: `${window.location.origin}/dashboard`,
+          data: { full_name: name.trim() || null },
+        },
       });
       if (error) {
-        toast({ title: "Registrierung fehlgeschlagen", description: error.message, variant: "destructive" });
+        toast({ title: "Registrierung fehlgeschlagen", description: translateAuthError(error.message), variant: "destructive" });
       } else if (data.user?.identities?.length === 0) {
-        // Email already registered — signUp silently does nothing for security reasons
         toast({
           title: "E-Mail bereits registriert",
           description: "Melde dich mit deinem bestehenden Konto an oder setze dein Passwort zurück.",
@@ -107,7 +128,7 @@ const Auth = () => {
         redirectTo: `${window.location.origin}/auth?tab=update-password`,
       });
       if (error) {
-        toast({ title: "Fehler", description: error.message, variant: "destructive" });
+        toast({ title: "Fehler", description: translateAuthError(error.message), variant: "destructive" });
       } else {
         setResetSent(true);
       }
@@ -119,33 +140,43 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex flex-col">
+    <div className="min-h-screen bg-slate-900 flex flex-col">
       {/* Back link */}
       <div className="px-6 pt-6">
-        <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors">
+        <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-300 transition-colors">
           <ArrowLeft className="w-4 h-4" />
           Zurück zur Startseite
         </Link>
       </div>
 
       <div className="flex-1 flex items-center justify-center px-4 py-8">
-        <Card className="w-full max-w-md shadow-xl border-0 bg-white/90 backdrop-blur-sm">
-          <CardHeader className="text-center pb-2">
-            <CardTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-blue-800 bg-clip-text text-transparent">
-              SnapFare
-            </CardTitle>
-            <CardDescription className="text-gray-600 mt-1">
+        <div className="w-full max-w-md">
+          {/* Logo */}
+          <div className="text-center mb-8">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <Plane className="w-5 h-5 text-green-400" />
+              <span className="text-3xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">
+                SnapFare
+              </span>
+            </div>
+            <p className="text-gray-400 text-sm">
               Melde dich an, um auf dein persönliches Deal-Dashboard zuzugreifen.
-            </CardDescription>
-          </CardHeader>
+            </p>
+          </div>
 
-          <CardContent className="pt-4">
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-sm">
             <Tabs value={tab} onValueChange={(v) => { setTab(v as AuthTab); setResetSent(false); }} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 bg-gray-100 mb-6">
-                <TabsTrigger value="login" className="data-[state=active]:bg-white data-[state=active]:text-blue-600">
+              <TabsList className="grid w-full grid-cols-2 bg-white/5 border border-white/10 mb-6">
+                <TabsTrigger
+                  value="login"
+                  className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500/20 data-[state=active]:to-blue-500/20 data-[state=active]:text-white text-gray-400"
+                >
                   Anmelden
                 </TabsTrigger>
-                <TabsTrigger value="register" className="data-[state=active]:bg-white data-[state=active]:text-blue-600">
+                <TabsTrigger
+                  value="register"
+                  className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500/20 data-[state=active]:to-blue-500/20 data-[state=active]:text-white text-gray-400"
+                >
                   Registrieren
                 </TabsTrigger>
               </TabsList>
@@ -154,7 +185,7 @@ const Auth = () => {
               <TabsContent value="login" className="space-y-4">
                 <form onSubmit={handleSignIn} className="space-y-4">
                   <div className="space-y-1.5">
-                    <Label htmlFor="login-email">E-Mail</Label>
+                    <Label htmlFor="login-email" className="text-gray-300 text-sm">E-Mail</Label>
                     <Input
                       id="login-email"
                       type="email"
@@ -162,10 +193,11 @@ const Auth = () => {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
+                      className="bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-green-400/50 focus:ring-green-400/20"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="login-password">Passwort</Label>
+                    <Label htmlFor="login-password" className="text-gray-300 text-sm">Passwort</Label>
                     <Input
                       id="login-password"
                       type="password"
@@ -173,11 +205,12 @@ const Auth = () => {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
+                      className="bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-green-400/50 focus:ring-green-400/20"
                     />
                   </div>
                   <Button
                     type="submit"
-                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold"
+                    className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-semibold h-11"
                     disabled={isLoading}
                   >
                     {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Anmelden"}
@@ -186,7 +219,7 @@ const Auth = () => {
                 <button
                   type="button"
                   onClick={() => setTab("reset")}
-                  className="w-full text-center text-sm text-gray-500 hover:text-blue-600 transition-colors mt-2"
+                  className="w-full text-center text-sm text-gray-500 hover:text-gray-300 transition-colors mt-2"
                 >
                   Passwort vergessen?
                 </button>
@@ -194,14 +227,24 @@ const Auth = () => {
 
               {/* Register tab */}
               <TabsContent value="register" className="space-y-4">
-                {/* Subscriber hint */}
-                <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-sm text-blue-700">
-                  Bereits SnapFare-Abonnent? Registriere dich mit derselben E-Mail-Adresse, um auf dein persönliches Dashboard zuzugreifen.
+                <div className="bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3 text-sm text-green-300">
+                  Bereits SnapFare-Abonnent? Registriere dich mit derselben E-Mail-Adresse.
                 </div>
 
                 <form onSubmit={handleSignUp} className="space-y-4">
                   <div className="space-y-1.5">
-                    <Label htmlFor="register-email">E-Mail</Label>
+                    <Label htmlFor="register-name" className="text-gray-300 text-sm">Wie heisst du?</Label>
+                    <Input
+                      id="register-name"
+                      type="text"
+                      placeholder="Dein Name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-green-400/50 focus:ring-green-400/20"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="register-email" className="text-gray-300 text-sm">E-Mail</Label>
                     <Input
                       id="register-email"
                       type="email"
@@ -209,10 +252,11 @@ const Auth = () => {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
+                      className="bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-green-400/50 focus:ring-green-400/20"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="register-password">Passwort</Label>
+                    <Label htmlFor="register-password" className="text-gray-300 text-sm">Passwort</Label>
                     <Input
                       id="register-password"
                       type="password"
@@ -221,10 +265,11 @@ const Auth = () => {
                       onChange={(e) => setPassword(e.target.value)}
                       required
                       minLength={6}
+                      className="bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-green-400/50 focus:ring-green-400/20"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="confirm-password">Passwort bestätigen</Label>
+                    <Label htmlFor="confirm-password" className="text-gray-300 text-sm">Passwort bestätigen</Label>
                     <Input
                       id="confirm-password"
                       type="password"
@@ -233,11 +278,12 @@ const Auth = () => {
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       required
                       minLength={6}
+                      className="bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-green-400/50 focus:ring-green-400/20"
                     />
                   </div>
                   <Button
                     type="submit"
-                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold"
+                    className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-semibold h-11"
                     disabled={isLoading}
                   >
                     {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Konto erstellen"}
@@ -245,33 +291,33 @@ const Auth = () => {
                 </form>
               </TabsContent>
 
-              {/* Password reset tab (hidden from tabs UI, accessible via button) */}
+              {/* Password reset tab */}
               <TabsContent value="reset" className="space-y-4">
                 {resetSent ? (
                   <div className="text-center py-6 space-y-3">
-                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-                      <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center mx-auto border border-green-500/30">
+                      <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                     </div>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-gray-400">
                       Wir haben dir einen Link zum Zurücksetzen deines Passworts zugesendet. Bitte überprüfe deine E-Mails.
                     </p>
                     <button
                       onClick={() => { setTab("login"); setResetSent(false); }}
-                      className="text-sm text-blue-600 hover:underline"
+                      className="text-sm text-green-400 hover:text-green-300 transition-colors"
                     >
                       Zurück zur Anmeldung
                     </button>
                   </div>
                 ) : (
                   <>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-gray-400">
                       Gib deine E-Mail-Adresse ein. Wir senden dir einen Link zum Zurücksetzen deines Passworts.
                     </p>
                     <form onSubmit={handleResetPassword} className="space-y-4">
                       <div className="space-y-1.5">
-                        <Label htmlFor="reset-email">E-Mail</Label>
+                        <Label htmlFor="reset-email" className="text-gray-300 text-sm">E-Mail</Label>
                         <Input
                           id="reset-email"
                           type="email"
@@ -279,11 +325,12 @@ const Auth = () => {
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           required
+                          className="bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-green-400/50 focus:ring-green-400/20"
                         />
                       </div>
                       <Button
                         type="submit"
-                        className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold"
+                        className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-semibold h-11"
                         disabled={isLoading}
                       >
                         {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Link zusenden"}
@@ -292,7 +339,7 @@ const Auth = () => {
                     <button
                       type="button"
                       onClick={() => setTab("login")}
-                      className="w-full text-center text-sm text-gray-500 hover:text-blue-600 transition-colors"
+                      className="w-full text-center text-sm text-gray-500 hover:text-gray-300 transition-colors"
                     >
                       Zurück zur Anmeldung
                     </button>
@@ -300,8 +347,8 @@ const Auth = () => {
                 )}
               </TabsContent>
             </Tabs>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   );
