@@ -166,16 +166,16 @@ const Auth = () => {
 
           <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-sm">
             <Tabs value={tab} onValueChange={(v) => { setTab(v as AuthTab); setResetSent(false); }} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 bg-white/5 border border-white/10 mb-6">
+              <TabsList className="grid w-full grid-cols-2 bg-white/5 border border-white/10 mb-6 p-1">
                 <TabsTrigger
                   value="login"
-                  className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500/20 data-[state=active]:to-blue-500/20 data-[state=active]:text-white text-gray-400"
+                  className="data-[state=active]:bg-slate-700 data-[state=active]:text-white data-[state=active]:shadow-sm text-gray-400 hover:text-gray-200"
                 >
                   Anmelden
                 </TabsTrigger>
                 <TabsTrigger
                   value="register"
-                  className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500/20 data-[state=active]:to-blue-500/20 data-[state=active]:text-white text-gray-400"
+                  className="data-[state=active]:bg-slate-700 data-[state=active]:text-white data-[state=active]:shadow-sm text-gray-400 hover:text-gray-200"
                 >
                   Registrieren
                 </TabsTrigger>
