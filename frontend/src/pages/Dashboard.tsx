@@ -254,7 +254,9 @@ const Dashboard = () => {
           <h1 className="text-xl font-bold text-white">
             {userName ? `${getTimeGreeting()}, ${userName} 👋` : getTimeGreeting()}
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">Willkommen auf deinem persönlichen Dashboard – du kannst entweder durch die Liste deiner Deals scrollen oder deinem persönlichen Agent eine Suchanfrage geben!</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {deals.length > 0 ? `${deals.length} personalisierte Deals für dich` : "Deine personalisierten Flugdeals aus der Schweiz"}
+          </p>
 
           {activeFilters.length > 0 && (
             <div className="flex flex-wrap gap-2 items-center mt-3">

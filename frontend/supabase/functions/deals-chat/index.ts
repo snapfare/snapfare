@@ -352,10 +352,26 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // Fetch user preferences to personalise the system prompt
+    const { data: userPrefs } = await supabaseAdmin
+      .from("user_preferences")
+      .select("preferred_origins,preferred_regions,max_price_chf,cabin_classes,min_trip_days,max_trip_days,preferred_seasons")
+      .eq("user_id", user.id)
+      .single();
+
+    const prefsContext = userPrefs ? `
+
+NUTZER-PRÄFERENZEN (standardmässig berücksichtigen, ausser der Nutzer fragt explizit nach etwas anderem)
+- Abflughäfen: ${userPrefs.preferred_origins?.join(", ") || "ZRH, GVA, BSL"}
+- Regionen: ${(userPrefs.preferred_regions as string[])?.length ? (userPrefs.preferred_regions as string[]).join(", ") : "alle"}
+- Max. Budget: ${userPrefs.max_price_chf ? `CHF ${userPrefs.max_price_chf}` : "kein Limit"}
+- Kabine: ${(userPrefs.cabin_classes as string[])?.join(", ") || "Economy"}
+- Reisedauer: ${userPrefs.min_trip_days || 2}${userPrefs.max_trip_days ? `–${userPrefs.max_trip_days}` : "+"} Tage` : "";
+
     // Build messages array — cap history at 8 messages to control token usage
     const cappedHistory = history.slice(-8);
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: SYSTEM_PROMPT + prefsContext },
       ...cappedHistory,
       { role: "user", content: message },
     ];
