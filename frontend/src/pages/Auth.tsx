@@ -6,7 +6,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Loader2, Plane } from 'lucide-react';
+import { ArrowLeft, Loader2, Plane, Check, X } from 'lucide-react';
+
+function getPasswordStrength(pw: string) {
+  return {
+    length: pw.length >= 8,
+    number: /\d/.test(pw),
+    special: /[^A-Za-z0-9]/.test(pw),
+  };
+}
 
 type AuthTab = "login" | "register" | "reset";
 
@@ -21,7 +29,7 @@ function translateAuthError(message: string): string {
     return "Diese E-Mail ist bereits registriert. Melde dich einfach an.";
   }
   if (message.includes("Password should be at least")) {
-    return "Das Passwort muss mindestens 6 Zeichen lang sein.";
+    return "Das Passwort muss mindestens 8 Zeichen, eine Zahl und ein Sonderzeichen enthalten.";
   }
   if (message.includes("rate limit") || message.includes("too many requests")) {
     return "Zu viele Anfragen. Bitte warte kurz und versuche es erneut.";
@@ -84,8 +92,9 @@ const Auth = () => {
       toast({ title: "Fehler", description: "Die Passwörter stimmen nicht überein.", variant: "destructive" });
       return;
     }
-    if (password.length < 6) {
-      toast({ title: "Fehler", description: "Das Passwort muss mindestens 6 Zeichen lang sein.", variant: "destructive" });
+    const pwStrength = getPasswordStrength(password);
+    if (!pwStrength.length || !pwStrength.number || !pwStrength.special) {
+      toast({ title: "Passwort zu schwach", description: "Mindestens 8 Zeichen, eine Zahl und ein Sonderzeichen erforderlich.", variant: "destructive" });
       return;
     }
 
@@ -260,13 +269,29 @@ const Auth = () => {
                     <Input
                       id="register-password"
                       type="password"
-                      placeholder="Mindestens 6 Zeichen"
+                      placeholder="Mindestens 8 Zeichen"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
-                      minLength={6}
                       className="bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-green-400/50 focus:ring-green-400/20"
                     />
+                    {password.length > 0 && (() => {
+                      const s = getPasswordStrength(password);
+                      return (
+                        <div className="flex gap-3 pt-1">
+                          {[
+                            { ok: s.length, label: "8+ Zeichen" },
+                            { ok: s.number, label: "Zahl" },
+                            { ok: s.special, label: "Sonderzeichen" },
+                          ].map(({ ok, label }) => (
+                            <span key={label} className={`flex items-center gap-1 text-xs ${ok ? "text-green-400" : "text-gray-500"}`}>
+                              {ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="confirm-password" className="text-gray-300 text-sm">Passwort bestätigen</Label>
@@ -277,7 +302,6 @@ const Auth = () => {
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       required
-                      minLength={6}
                       className="bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-green-400/50 focus:ring-green-400/20"
                     />
                   </div>
