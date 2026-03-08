@@ -95,6 +95,24 @@ async function getDeals(params: {
   return (data as Deal[]) ?? [];
 }
 
+function buildSkyscannerUrl(
+  origin: string,
+  destination: string,
+  departureDate: string,
+  returnDate?: string,
+  cabinClass?: string
+): string {
+  const toSkyDate = (d: string) => d.replace(/-/g, "").slice(2); // 2026-04-15 → 260415
+  const cabinMap: Record<string, string> = {
+    economy: "economy", business: "business", first: "first", premium_economy: "premiumeconomy",
+  };
+  const cabin = cabinMap[(cabinClass ?? "economy").toLowerCase()] ?? "economy";
+  const path = returnDate
+    ? `${origin.toLowerCase()}/${destination.toLowerCase()}/${toSkyDate(departureDate)}/${toSkyDate(returnDate)}/`
+    : `${origin.toLowerCase()}/${destination.toLowerCase()}/${toSkyDate(departureDate)}/`;
+  return `https://www.skyscanner.ch/transport/fluge/${path}?adultsv2=2&cabinclass=${cabin}`;
+}
+
 // Tool: search Duffel API for live flight prices
 async function searchDuffel(params: {
   origin: string;
@@ -102,8 +120,8 @@ async function searchDuffel(params: {
   departure_date: string;
   return_date?: string;
   cabin_class?: string;
-}): Promise<string> {
-  if (!DUFFEL_API_KEY) return "Duffel API not configured";
+}): Promise<{ summary: string; deals: Deal[] }> {
+  if (!DUFFEL_API_KEY) return { summary: "Duffel API not configured", deals: [] };
 
   try {
     const slices: object[] = [
@@ -143,33 +161,65 @@ async function searchDuffel(params: {
     });
 
     if (!response.ok) {
-      return `Duffel search failed: ${response.status}`;
+      return { summary: `Duffel search failed: ${response.status}`, deals: [] };
     }
 
     const json = await response.json();
     const offers = json.data?.offers ?? [];
 
     if (offers.length === 0) {
-      return "No flights found for this route/date combination.";
+      return { summary: "No flights found for this route/date combination.", deals: [] };
     }
 
-    // Return top 3 cheapest options as a compact summary
-    const top3 = offers
+    // Top 3 cheapest options
+    const top3: { total_amount: string; total_currency: string; slices: { segments: { operating_carrier: { iata_code: string } }[] }[] }[] = offers
       .sort((a: { total_amount: string }, b: { total_amount: string }) =>
         parseFloat(a.total_amount) - parseFloat(b.total_amount)
       )
-      .slice(0, 3)
-      .map((o: { total_amount: string; total_currency: string; slices: { segments: { operating_carrier: { iata_code: string }; aircraft: { iata_code?: string } | null }[] }[] }) => {
-        const carrier = o.slices?.[0]?.segments?.[0]?.operating_carrier?.iata_code ?? "?";
-        const amount = parseFloat(o.total_amount).toFixed(0);
-        return `${carrier}: ${amount} ${o.total_currency}`;
-      })
-      .join(" | ");
+      .slice(0, 3);
 
-    return `Live prices (${params.origin}→${params.destination}, ${params.departure_date}): ${top3}`;
+    const deals: Deal[] = top3.map((o, i) => {
+      const carrier = o.slices?.[0]?.segments?.[0]?.operating_carrier?.iata_code ?? "?";
+      const price = parseFloat(o.total_amount);
+      return {
+        id: -(i + 1),
+        title: `${carrier}: ${params.origin}→${params.destination}`,
+        origin_iata: params.origin,
+        destination_iata: params.destination,
+        origin: params.origin,
+        destination: params.destination,
+        airline: carrier,
+        cabin_class: params.cabin_class ?? "economy",
+        price,
+        currency: o.total_currency,
+        stops: null,
+        flight_duration_display: null,
+        baggage_included: null,
+        baggage_allowance_kg: null,
+        image: null,
+        tier: "free",
+        travel_period_display: params.return_date
+          ? `${params.departure_date} – ${params.return_date}`
+          : params.departure_date,
+        skyscanner_url: buildSkyscannerUrl(
+          params.origin,
+          params.destination,
+          params.departure_date,
+          params.return_date,
+          params.cabin_class
+        ),
+        miles: null,
+        scoring: null,
+      };
+    });
+
+    const summary = `Live prices (${params.origin}→${params.destination}, ${params.departure_date}): ` +
+      top3.map((o, i) => `${deals[i].airline}: ${o.total_amount} ${o.total_currency}`).join(" | ");
+
+    return { summary, deals };
   } catch (err) {
     console.error("Duffel search error:", err);
-    return "Could not fetch live prices at this time.";
+    return { summary: "Could not fetch live prices at this time.", deals: [] };
   }
 }
 
@@ -363,7 +413,9 @@ const handler = async (req: Request): Promise<Response> => {
                 )
               : "Keine Deals für diese Kriterien gefunden.";
         } else if (toolCall.function.name === "search_duffel") {
-          result = await searchDuffel(args);
+          const duffelResult = await searchDuffel(args);
+          sourcedDeals = [...sourcedDeals, ...duffelResult.deals];
+          result = duffelResult.summary;
         }
 
         toolResults.push({
