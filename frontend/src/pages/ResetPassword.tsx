@@ -41,7 +41,7 @@ const ResetPassword = () => {
         // Give onAuthStateChange time to fire, then show error
         setTimeout(() => {
           if (mounted) setStatus(s => s === 'loading' ? 'error' : s);
-        }, 2000);
+        }, 6000);
       }
     });
 

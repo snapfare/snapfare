@@ -76,6 +76,8 @@ interface Deal {
   flight_duration_display: string | null;
   baggage_included: boolean | null;
   baggage_allowance_kg: number | null;
+  baggage_pieces_included: number | null;
+  aircraft: string | null;
   image: string | null;
   tier: string;
   travel_period_display: string | null;
@@ -97,7 +99,7 @@ async function getDeals(params: {
   let query = supabaseAdmin
     .from("deals")
     .select(
-      "id,title,origin_iata,destination_iata,origin,destination,airline,cabin_class,price,currency,stops,flight_duration_display,baggage_included,baggage_allowance_kg,image,tier,travel_period_display,skyscanner_url,miles,scoring"
+      "id,title,origin_iata,destination_iata,origin,destination,airline,cabin_class,price,currency,stops,flight_duration_display,baggage_included,baggage_allowance_kg,baggage_pieces_included,aircraft,image,tier,travel_period_display,skyscanner_url,miles,scoring"
     )
     .order("scoring", { ascending: false })
     .limit(params.limit ?? 5);
@@ -157,6 +159,18 @@ function buildSkyscannerUrl(
     ? `${origin.toLowerCase()}/${destination.toLowerCase()}/${toSkyDate(departureDate)}/${toSkyDate(returnDate)}/`
     : `${origin.toLowerCase()}/${destination.toLowerCase()}/${toSkyDate(departureDate)}/`;
   return `https://www.skyscanner.ch/transport/fluge/${path}?adultsv2=2&cabinclass=${cabin}`;
+}
+
+// Parse ISO 8601 duration (e.g. "PT14H30M") into human-readable German string
+function parseDuration(iso: string | undefined): string | null {
+  if (!iso) return null;
+  const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
+  if (!m) return null;
+  const h = parseInt(m[1] ?? "0");
+  const min = parseInt(m[2] ?? "0");
+  if (h > 0 && min > 0) return `${h} Std ${min} Min`;
+  if (h > 0) return `${h} Std`;
+  return `${min} Min`;
 }
 
 // Tool: search Duffel API for live flight prices.
@@ -222,7 +236,8 @@ async function searchDuffel(
     }
 
     // Top 1 cheapest option
-    const top1: { total_amount: string; total_currency: string; slices: { segments: { operating_carrier: { iata_code: string } }[] }[] }[] = offers
+    // deno-lint-ignore no-explicit-any
+    const top1: any[] = offers
       .sort((a: { total_amount: string }, b: { total_amount: string }) =>
         parseFloat(a.total_amount) - parseFloat(b.total_amount)
       )
@@ -232,9 +247,25 @@ async function searchDuffel(
 
     // Build rows to insert into chat_deals (user-scoped, never shown in public deals section)
     const rows = top1.map((o) => {
-      const carrier = o.slices?.[0]?.segments?.[0]?.operating_carrier?.iata_code ?? "?";
+      const firstSlice = o.slices?.[0];
+      const firstSeg = firstSlice?.segments?.[0];
+      const carrier = firstSeg?.operating_carrier?.iata_code ?? "?";
       const rate = rates[o.total_currency] ?? 1.0;
       const priceChf = Math.round(parseFloat(o.total_amount) * rate);
+
+      // Extract enrichment fields from Duffel offer
+      const stopsCount = firstSlice ? Math.max(0, (firstSlice.segments?.length ?? 1) - 1) : null;
+      const durationDisplay = parseDuration(firstSlice?.duration);
+      const aircraftCode: string | null = firstSeg?.aircraft?.iata_code ?? null;
+
+      // Baggage: checked bags from first passenger
+      const baggages: { type: string; quantity: number }[] = o.passengers?.[0]?.baggages ?? [];
+      const checkedBag = baggages.find((b) => b.type === "checked");
+      const baggageIncluded: boolean | null = baggages.length > 0 ? (checkedBag != null && checkedBag.quantity > 0) : null;
+      const baggagePieces: number | null = checkedBag?.quantity ?? null;
+      // Duffel doesn't give kg allowance directly in offer_requests — leave null
+      const baggageKg: null = null;
+
       return {
         user_id: userId,
         title: `${carrier}: ${params.origin}→${params.destination}`,
@@ -256,6 +287,12 @@ async function searchDuffel(
           params.return_date,
           params.cabin_class
         ),
+        stops: stopsCount,
+        flight_duration_display: durationDisplay,
+        aircraft: aircraftCode,
+        baggage_included: baggageIncluded,
+        baggage_pieces_included: baggagePieces,
+        baggage_allowance_kg: baggageKg,
       };
     });
 
@@ -264,7 +301,7 @@ async function searchDuffel(
     const { data: inserted, error } = await supabaseAdmin
       .from("chat_deals")
       .insert(rows)
-      .select("id,title,origin_iata,destination_iata,origin,destination,airline,cabin_class,price,currency,travel_period_display,skyscanner_url");
+      .select("id,title,origin_iata,destination_iata,origin,destination,airline,cabin_class,price,currency,travel_period_display,skyscanner_url,stops,flight_duration_display,aircraft,baggage_included,baggage_pieces_included,baggage_allowance_kg");
 
     if (error || !inserted || inserted.length === 0) {
       console.error("[search_duffel] chat_deals insert error:", {
@@ -285,10 +322,12 @@ async function searchDuffel(
         cabin_class: row.cabin_class,
         price: row.price,
         currency: "CHF",
-        stops: null,
-        flight_duration_display: null,
-        baggage_included: null,
-        baggage_allowance_kg: null,
+        stops: row.stops ?? null,
+        flight_duration_display: row.flight_duration_display ?? null,
+        baggage_included: row.baggage_included ?? null,
+        baggage_allowance_kg: row.baggage_allowance_kg ?? null,
+        baggage_pieces_included: row.baggage_pieces_included ?? null,
+        aircraft: row.aircraft ?? null,
         image: null,
         tier: "free",
         travel_period_display: row.travel_period_display ?? null,
@@ -305,7 +344,7 @@ async function searchDuffel(
 
     console.log(`[search_duffel] inserted IDs: ${inserted.map((r: Record<string, unknown>) => r.id).join(",")}`);
 
-    // Map inserted rows to Deal shape (fields not in chat_deals default to null)
+    // Map inserted rows to Deal shape
     const deals: Deal[] = inserted.map((row: Record<string, unknown>) => ({
       id: row.id as number,
       title: row.title as string,
@@ -317,10 +356,12 @@ async function searchDuffel(
       cabin_class: row.cabin_class as string,
       price: row.price as number,
       currency: row.currency as string,
-      stops: null,
-      flight_duration_display: null,
-      baggage_included: null,
-      baggage_allowance_kg: null,
+      stops: row.stops as number | null,
+      flight_duration_display: row.flight_duration_display as string | null,
+      baggage_included: row.baggage_included as boolean | null,
+      baggage_allowance_kg: row.baggage_allowance_kg as number | null,
+      baggage_pieces_included: row.baggage_pieces_included as number | null,
+      aircraft: row.aircraft as string | null,
       image: null,
       tier: "free",
       travel_period_display: row.travel_period_display as string | null,
@@ -331,7 +372,14 @@ async function searchDuffel(
 
     const summary =
       `${deals.length} Flug gefunden (${params.origin}→${params.destination}, ${params.departure_date}): ` +
-      deals.map((d) => `${d.airline} CHF ${d.price} (ID ${d.id})`).join(", ") +
+      deals.map((d) => {
+        const parts = [`${d.airline} CHF ${d.price} (ID ${d.id})`];
+        if (d.stops !== null) parts.push(d.stops === 0 ? "Nonstop" : `${d.stops} Stopp`);
+        if (d.flight_duration_display) parts.push(d.flight_duration_display);
+        if (d.baggage_included === true && d.baggage_pieces_included) parts.push(`${d.baggage_pieces_included}× Gepäck inklusive`);
+        else if (d.baggage_included === false) parts.push("kein Aufgabegepäck");
+        return parts.join(" | ");
+      }).join(", ") +
       `. Nenne den CHF-Preis exakt so wie er hier steht — nie umrechnen, nie eine andere Währung.`;
 
     return { summary, deals };
@@ -495,7 +543,7 @@ DEAL-QUALITÄT (wichtig)
 - Sortiere Antworten immer nach Score (bester Deal zuerst)
 
 ANTWORT-FORMAT
-Wenn Deals gefunden: 1–2 Sätze. Nenne den günstigsten CHF-Preis exakt aus dem Tool-Ergebnis — nie umrechnen, nie EUR, nie USD. Die Karten zeigen alle Details.
+Wenn Deals gefunden: 1–2 Sätze. Nenne den günstigsten CHF-Preis exakt aus dem Tool-Ergebnis — nie umrechnen, nie EUR, nie USD. Wenn das Tool-Ergebnis Stops, Dauer oder Gepäckinfo enthält, erwähne diese kurz in einer Zeile (z.B. "Nonstop, 8 Std 30 Min, 1× Gepäck inklusive"). Die Karten zeigen alle Details.
 Wenn keine Deals: Kurz erklären warum, dann konkret vorschlagen: anderes Budget, anderen Abflughafen (z.B. GVA statt ZRH), oder flexiblere Daten — max. 2 Sätze.
 
 ARBEITSWEISE

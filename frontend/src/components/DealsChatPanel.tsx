@@ -47,6 +47,7 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
   const [dailyCount, setDailyCount] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const lastMsgRef = useRef<HTMLDivElement>(null);
   const sessionId = useRef<string>(crypto.randomUUID());
   const persistedCount = useRef<number>(0);
 
@@ -83,7 +84,12 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
   };
 
   useEffect(() => {
-    scrollToBottom();
+    const last = messages[messages.length - 1];
+    if (last?.role === "assistant") {
+      lastMsgRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    } else {
+      scrollToBottom();
+    }
   }, [messages]);
 
   const handleSend = async () => {
@@ -216,7 +222,7 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
         )}
 
         {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+          <div key={i} ref={i === messages.length - 1 ? lastMsgRef : undefined} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
             <div className="max-w-[85%]">
               <div
                 className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
@@ -255,8 +261,9 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
 
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-white/10 border border-white/10 rounded-2xl rounded-bl-sm px-4 py-3">
+            <div className="bg-white/10 border border-white/10 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2">
               <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+              <span className="text-xs text-gray-500">Agent denkt nach…</span>
             </div>
           </div>
         )}
