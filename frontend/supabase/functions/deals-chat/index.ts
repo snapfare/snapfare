@@ -16,6 +16,15 @@ const supabaseAdmin = createClient(
 const openai = new OpenAI({ apiKey: Deno.env.get("OPENAI_API_KEY")! });
 const DUFFEL_API_KEY = Deno.env.get("DUFFEL_API_KEY")!;
 
+// Approximate exchange rates to CHF (update periodically)
+const TO_CHF: Record<string, number> = {
+  CHF: 1.0,
+  EUR: 0.94,
+  USD: 0.88,
+  GBP: 1.12,
+  GBP_old: 1.12,
+};
+
 interface Message {
   role: "user" | "assistant";
   content: string;
@@ -180,7 +189,8 @@ async function searchDuffel(params: {
 
     const deals: Deal[] = top3.map((o, i) => {
       const carrier = o.slices?.[0]?.segments?.[0]?.operating_carrier?.iata_code ?? "?";
-      const price = parseFloat(o.total_amount);
+      const rate = TO_CHF[o.total_currency] ?? 1.0;
+      const priceChf = Math.round(parseFloat(o.total_amount) * rate);
       return {
         id: -(i + 1),
         title: `${carrier}: ${params.origin}→${params.destination}`,
@@ -190,8 +200,8 @@ async function searchDuffel(params: {
         destination: params.destination,
         airline: carrier,
         cabin_class: params.cabin_class ?? "economy",
-        price,
-        currency: o.total_currency,
+        price: priceChf,
+        currency: "CHF",
         stops: null,
         flight_duration_display: null,
         baggage_included: null,
@@ -214,7 +224,7 @@ async function searchDuffel(params: {
     });
 
     const summary = `Live prices (${params.origin}→${params.destination}, ${params.departure_date}): ` +
-      top3.map((o, i) => `${deals[i].airline}: ${o.total_amount} ${o.total_currency}`).join(" | ");
+      deals.map((d) => `${d.airline}: CHF ${d.price}`).join(" | ");
 
     return { summary, deals };
   } catch (err) {
@@ -337,7 +347,8 @@ ARBEITSWEISE — wichtig, immer so vorgehen:
 
 REGELN
 - Antworte immer auf Deutsch
-- Preise immer in CHF (oder Originalwährung wenn CHF nicht verfügbar)
+- Preise immer in CHF — alle Preise sind bereits in CHF, niemals selbst umrechnen oder "(ca. X CHF)" ergänzen
+- Bei Duffel-Suchergebnissen: beschreibe im Text nur den günstigsten Deal; die anderen erscheinen als Buchungskarten darunter
 - Erwähne NIEMALS Skyscanner-Links im Text — die Buchungslinks sind direkt in den Deal-Karten sichtbar
 - Meilen nur erwähnen wenn der Nutzer danach fragt oder es besonders attraktiv ist
 - Kein "Klicke hier", kein "Weitere Infos findest du..." — kein Link-Spam
