@@ -21,7 +21,15 @@ function normalizeMarkdown(text: string): string {
   return text.replace(/ - (\*\*)/g, "\n- $1");
 }
 
-const GREETING = "Hallo! Ich bin der SnapFare Agent 🛫 Ich helfe dir, die besten Flugdeals ab der Schweiz zu finden. Frag mich z.B. nach günstigen Asien-Deals, Business-Flügen oder dem besten Angebot diesen Sommer!";
+function getTimeGreeting(): string {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 11) return "Guten Morgen";
+  if (h >= 11 && h < 14) return "Guten Mittag";
+  if (h >= 17 && h < 23) return "Guten Abend";
+  return "Hallo";
+}
+
+const GREETING_SUFFIX = "! Ich bin der SnapFare Agent 🛫 Ich helfe dir, die besten Flugdeals ab der Schweiz zu finden. Frag mich z.B. nach günstigen Asien-Deals, Business-Flügen oder dem besten Angebot diesen Sommer!";
 
 const SUGGESTIONS = [
   "Zeig mir günstige Asien-Deals",
@@ -34,7 +42,10 @@ interface DealsChatPanelProps {
 }
 
 const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
-  const greeting = userName ? GREETING.replace("Hallo!", `Hallo, ${userName}!`) : GREETING;
+  const timeGreeting = getTimeGreeting();
+  const greeting = userName
+    ? `${timeGreeting}, ${userName}${GREETING_SUFFIX}`
+    : `${timeGreeting}${GREETING_SUFFIX}`;
   const [messages, setMessages] = useState<Message[]>([{ role: "assistant", content: greeting }]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
