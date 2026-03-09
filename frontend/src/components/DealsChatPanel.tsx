@@ -15,6 +15,12 @@ interface Message {
 
 const MAX_MESSAGES = 10;
 
+// GPT sometimes outputs "- **Key:** value" inline on one line separated by spaces.
+// This converts those into proper newline-separated markdown bullets.
+function normalizeMarkdown(text: string): string {
+  return text.replace(/ - (\*\*)/g, "\n- $1");
+}
+
 const GREETING = "Hallo! Ich bin der SnapFare Agent 🛫 Ich helfe dir, die besten Flugdeals ab der Schweiz zu finden. Frag mich z.B. nach günstigen Asien-Deals, Business-Flügen oder dem besten Angebot diesen Sommer!";
 
 const SUGGESTIONS = [
@@ -173,7 +179,7 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
                       strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
                     }}
                   >
-                    {msg.content}
+                    {normalizeMarkdown(msg.content)}
                   </ReactMarkdown>
                 ) : (
                   msg.content
