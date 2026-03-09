@@ -192,7 +192,7 @@ async function searchDuffel(params: {
       const rate = TO_CHF[o.total_currency] ?? 1.0;
       const priceChf = Math.round(parseFloat(o.total_amount) * rate);
       return {
-        id: -(idOffset + i + 1),
+        id: 100000 + idOffset + i,
         title: `${carrier}: ${params.origin}→${params.destination}`,
         origin_iata: params.origin,
         destination_iata: params.destination,
@@ -223,9 +223,9 @@ async function searchDuffel(params: {
       };
     });
 
-    const summary = `Preise bereits in CHF umgerechnet (${params.origin}→${params.destination}, ${params.departure_date}): ` +
-      deals.map((d) => `${d.airline}: CHF ${d.price}`).join(" | ") +
-      ` — diese Preise sind fertig in CHF, niemals selbst umrechnen oder EUR erwähnen.`;
+    const summary = `${deals.length} Flüge gefunden (${params.origin}→${params.destination}, ${params.departure_date}): ` +
+      deals.map((d) => `${d.airline} (ID ${d.id})`).join(", ") +
+      `. Details sind in den Deal-Karten sichtbar.`;
 
     return { summary, deals };
   } catch (err) {
@@ -315,17 +315,9 @@ CHARAKTER
 - Direkt und selbstbewusst — keine Füllwörter, kein "Natürlich!", kein "Sehr gerne!"
 - Schweizer Nüchternheit trifft auf echte Begeisterung für gute Deals
 
-ANTWORT-FORMAT — zwei Modi:
-
-A) WENN Deal-Karten angezeigt werden (nach get_deals oder search_duffel):
-   → Genau 1 Satz. Kein Preis, keine Route, keine Airline, keine Kabine, keine Dauer, kein Gepäck im Text.
-   → All diese Details sind bereits in den Karten sichtbar — im Text NIEMALS wiederholen.
-   → Nur allgemeiner Kontext erlaubt: Reisedauer, Saison, Buchtipp, Vergleich.
-   → Beispiel gut: "Günstigste Optionen für ZRH→JFK im April — gute Verfügbarkeit noch vorhanden."
-   → Beispiel schlecht: "Iberia für CHF 521 über Madrid, ca. 8h30, Economy" ← VERBOTEN
-
-B) WENN keine Deals gefunden / nur Fragen beantwortet werden:
-   → Freier Text, präzise und kurz.
+ANTWORT-FORMAT:
+Wenn du Deals gefunden hast: Schreibe genau 1 Satz als Einleitung. Nenne KEINE Zahlen, KEINE Preise, KEINE Währungen (weder CHF noch EUR noch sonstiges), KEINE Airlines, KEINE Routen, KEINE Flugdetails im Text. Die Deal-Karten darunter zeigen dem Nutzer alle Details. Dein Satz soll nur Kontext geben (z.B. Reisezeit, Verfügbarkeit, Tipp).
+Wenn keine Deals gefunden: Freier Text, kurz.
 
 ARBEITSWEISE — wichtig, immer so vorgehen:
 
@@ -354,9 +346,9 @@ REGELN
 - Kein "Klicke hier", kein "Weitere Infos findest du..." — kein Link-Spam
 - Aktuelles Datum: ${new Date().toLocaleDateString("de-CH")}
 
-DEAL-KARTEN: Schliesse deine Antwort immer mit einem Tag ab, der die IDs der Deals enthält, die du im Text erwähnst — genau so viele, wie du beschreibst:
+DEAL-KARTEN: Schliesse jede Antwort mit einem Tag ab. Setze ALLE Deal-IDs ein, die du vom Tool erhalten hast:
 [DEALS: id1,id2,id3]
-Beispiel: wenn du 2 Deals beschreibst → [DEALS: 42,17]. Wenn keine Deals → [DEALS:]`;
+Wenn keine Deals: [DEALS:]`;
 
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
@@ -457,14 +449,7 @@ NUTZER-PRÄFERENZEN (standardmässig berücksichtigen, ausser der Nutzer fragt e
                     route: `${d.origin_iata}→${d.destination_iata}`,
                     airline: d.airline,
                     cabin: d.cabin_class,
-                    price: `${d.price} ${d.currency}`,
-                    duration: d.flight_duration_display,
-                    baggage: d.baggage_included
-                      ? `${d.baggage_allowance_kg ?? "?"} kg`
-                      : "Kein Gepäck",
                     period: d.travel_period_display,
-                    miles: d.miles,
-                    link: d.skyscanner_url,
                   }))
                 )
               : "Keine Deals für diese Kriterien gefunden.";
@@ -502,18 +487,18 @@ NUTZER-PRÄFERENZEN (standardmässig berücksichtigen, ausser der Nutzer fragt e
     // Parse [DEALS: id1,id2,...] tag from GPT response to align cards with text
     let responseText = assistantMessage.content ?? "";
     let selectedDeals = uniqueDeals;
-    const dealTagMatch = responseText.match(/\[DEALS:\s*([\d,\s]*)\]/);
+    const dealTagMatch = responseText.match(/\[DEALS:\s*([\d,\s-]*)\]/);
     if (dealTagMatch) {
       const rawIds = dealTagMatch[1].trim();
       if (rawIds) {
-        const selectedIds = rawIds.split(",").map((s) => parseInt(s.trim(), 10)).filter(Boolean);
+        const selectedIds = rawIds.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
         selectedDeals = selectedIds
           .map((id) => uniqueDeals.find((d) => d.id === id))
           .filter((d): d is Deal => d !== undefined);
       } else {
         selectedDeals = [];
       }
-      responseText = responseText.replace(/\n?\[DEALS:[\d,\s]*\]/, "").trimEnd();
+      responseText = responseText.replace(/\n?\[DEALS:[\d,\s-]*\]/, "").trimEnd();
     }
 
     return new Response(
