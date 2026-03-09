@@ -15,6 +15,7 @@ const supabaseAdmin = createClient(
 
 const openai = new OpenAI({ apiKey: Deno.env.get("OPENAI_API_KEY")! });
 const DUFFEL_API_KEY = Deno.env.get("DUFFEL_API_KEY")!;
+console.log("[startup] SUPABASE_SERVICE_ROLE_KEY present:", !!Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"));
 
 // Fallback exchange rates (used if live fetch fails)
 const FALLBACK_TO_CHF: Record<string, number> = {
@@ -214,17 +215,17 @@ async function searchDuffel(
       return { summary: "No flights found for this route/date combination.", deals: [] };
     }
 
-    // Top 3 cheapest options
-    const top3: { total_amount: string; total_currency: string; slices: { segments: { operating_carrier: { iata_code: string } }[] }[] }[] = offers
+    // Top 1 cheapest option
+    const top1: { total_amount: string; total_currency: string; slices: { segments: { operating_carrier: { iata_code: string } }[] }[] }[] = offers
       .sort((a: { total_amount: string }, b: { total_amount: string }) =>
         parseFloat(a.total_amount) - parseFloat(b.total_amount)
       )
-      .slice(0, 3);
+      .slice(0, 1);
 
     const rates = getToChf();
 
     // Build rows to insert into chat_deals (user-scoped, never shown in public deals section)
-    const rows = top3.map((o) => {
+    const rows = top1.map((o) => {
       const carrier = o.slices?.[0]?.segments?.[0]?.operating_carrier?.iata_code ?? "?";
       const rate = rates[o.total_currency] ?? 1.0;
       const priceChf = Math.round(parseFloat(o.total_amount) * rate);
@@ -253,15 +254,50 @@ async function searchDuffel(
     });
 
     // Insert into chat_deals and get back the assigned IDs
+    console.log(`[search_duffel] inserting ${rows.length} rows for user ${userId}`);
     const { data: inserted, error } = await supabaseAdmin
       .from("chat_deals")
       .insert(rows)
       .select("id,title,origin_iata,destination_iata,origin,destination,airline,cabin_class,price,currency,travel_period_display,skyscanner_url");
 
     if (error || !inserted || inserted.length === 0) {
-      console.error("chat_deals insert error:", error);
-      return { summary: "Could not save live flight results.", deals: [] };
+      console.error("[search_duffel] chat_deals insert error:", {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+      });
+      // Fallback: build in-memory deals with synthetic IDs so the chat still works
+      const fallbackDeals: Deal[] = rows.map((row, i) => ({
+        id: 900000 + i,
+        title: row.title,
+        origin_iata: row.origin_iata,
+        destination_iata: row.destination_iata,
+        origin: row.origin,
+        destination: row.destination,
+        airline: row.airline,
+        cabin_class: row.cabin_class,
+        price: row.price,
+        currency: "CHF",
+        stops: null,
+        flight_duration_display: null,
+        baggage_included: null,
+        baggage_allowance_kg: null,
+        image: null,
+        tier: "free",
+        travel_period_display: row.travel_period_display ?? null,
+        skyscanner_url: row.skyscanner_url ?? null,
+        miles: null,
+        scoring: null,
+      }));
+      const fallbackSummary =
+        `${fallbackDeals.length} Flug gefunden (${params.origin}→${params.destination}, ${params.departure_date}): ` +
+        fallbackDeals.map((d) => `${d.airline} CHF ${d.price} (ID ${d.id})`).join(", ") +
+        `. Nenne den CHF-Preis exakt so wie er hier steht — nie umrechnen, nie eine andere Währung.`;
+      return { summary: fallbackSummary, deals: fallbackDeals };
     }
+
+    console.log(`[search_duffel] inserted IDs: ${inserted.map((r: Record<string, unknown>) => r.id).join(",")}`);
 
     // Map inserted rows to Deal shape (fields not in chat_deals default to null)
     const deals: Deal[] = inserted.map((row: Record<string, unknown>) => ({
@@ -288,9 +324,9 @@ async function searchDuffel(
     }));
 
     const summary =
-      `${deals.length} Flüge gefunden (${params.origin}→${params.destination}, ${params.departure_date}): ` +
-      deals.map((d) => `${d.airline} (ID ${d.id})`).join(", ") +
-      `. Preise werden in den Deal-Karten angezeigt. Nenne KEINE Preise im Text.`;
+      `${deals.length} Flug gefunden (${params.origin}→${params.destination}, ${params.departure_date}): ` +
+      deals.map((d) => `${d.airline} CHF ${d.price} (ID ${d.id})`).join(", ") +
+      `. Nenne den CHF-Preis exakt so wie er hier steht — nie umrechnen, nie eine andere Währung.`;
 
     return { summary, deals };
   } catch (err) {
@@ -443,7 +479,7 @@ CHARAKTER
 - Schweizer Nüchternheit trifft auf echte Begeisterung für gute Deals
 
 ANTWORT-FORMAT:
-Wenn du Deals gefunden hast: Schreibe 1-2 kurze Sätze. Du darfst den günstigsten CHF-Preis aus dem Tool-Ergebnis nennen — aber NUR in CHF, NIEMALS in EUR. Kopiere den CHF-Betrag exakt so, wie er im Tool-Ergebnis steht. Versuche NIEMALS, Preise umzurechnen oder eine andere Währung zu verwenden. Die Karten zeigen alle weiteren Details.
+Wenn du Deals gefunden hast: Schreibe 1-2 kurze Sätze. Nenne den günstigsten CHF-Preis exakt so wie er im Tool-Ergebnis steht (als price_chf oder "CHF X") — nie umrechnen, nie EUR, nie USD, nie eine andere Währung. Die Karten zeigen alle weiteren Details.
 Wenn keine Deals gefunden: Freier Text, kurz.
 
 ARBEITSWEISE — wichtig, immer so vorgehen:
@@ -579,6 +615,8 @@ NUTZER-PRÄFERENZEN (standardmässig berücksichtigen, ausser der Nutzer fragt e
                     route: `${d.origin_iata}→${d.destination_iata}`,
                     airline: d.airline,
                     cabin: d.cabin_class,
+                    price_chf: d.price,
+                    currency: d.currency ?? "CHF",
                     period: d.travel_period_display,
                   }))
                 )
