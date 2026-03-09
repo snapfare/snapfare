@@ -341,7 +341,11 @@ REGELN
 - Erwähne NIEMALS Skyscanner-Links im Text — die Buchungslinks sind direkt in den Deal-Karten sichtbar
 - Meilen nur erwähnen wenn der Nutzer danach fragt oder es besonders attraktiv ist
 - Kein "Klicke hier", kein "Weitere Infos findest du..." — kein Link-Spam
-- Aktuelles Datum: ${new Date().toLocaleDateString("de-CH")}`;
+- Aktuelles Datum: ${new Date().toLocaleDateString("de-CH")}
+
+DEAL-KARTEN: Schliesse deine Antwort immer mit einem Tag ab, der die IDs der Deals enthält, die du im Text erwähnst — genau so viele, wie du beschreibst:
+[DEALS: id1,id2,id3]
+Beispiel: wenn du 2 Deals beschreibst → [DEALS: 42,17]. Wenn keine Deals → [DEALS:]`;
 
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
@@ -484,10 +488,27 @@ NUTZER-PRÄFERENZEN (standardmässig berücksichtigen, ausser der Nutzer fragt e
       new Map(sourcedDeals.map((d) => [d.id, d])).values()
     );
 
+    // Parse [DEALS: id1,id2,...] tag from GPT response to align cards with text
+    let responseText = assistantMessage.content ?? "";
+    let selectedDeals = uniqueDeals;
+    const dealTagMatch = responseText.match(/\[DEALS:\s*([\d,\s]*)\]/);
+    if (dealTagMatch) {
+      const rawIds = dealTagMatch[1].trim();
+      if (rawIds) {
+        const selectedIds = rawIds.split(",").map((s) => parseInt(s.trim(), 10)).filter(Boolean);
+        selectedDeals = selectedIds
+          .map((id) => uniqueDeals.find((d) => d.id === id))
+          .filter((d): d is Deal => d !== undefined);
+      } else {
+        selectedDeals = [];
+      }
+      responseText = responseText.replace(/\n?\[DEALS:[\d,\s]*\]/, "").trimEnd();
+    }
+
     return new Response(
       JSON.stringify({
-        response: assistantMessage.content,
-        deals: uniqueDeals,
+        response: responseText,
+        deals: selectedDeals,
       }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );

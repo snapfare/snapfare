@@ -98,7 +98,7 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
         {
           role: "assistant",
           content: data.response ?? "Entschuldigung, ich konnte keine Antwort generieren.",
-          deals: (data.deals ?? []).slice(0, 3),
+          deals: data.deals ?? [],
         },
       ]);
     } catch (err) {
