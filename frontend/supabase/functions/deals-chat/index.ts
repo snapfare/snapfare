@@ -16,14 +16,44 @@ const supabaseAdmin = createClient(
 const openai = new OpenAI({ apiKey: Deno.env.get("OPENAI_API_KEY")! });
 const DUFFEL_API_KEY = Deno.env.get("DUFFEL_API_KEY")!;
 
-// Approximate exchange rates to CHF (update periodically)
-const TO_CHF: Record<string, number> = {
+// Fallback exchange rates (used if live fetch fails)
+const FALLBACK_TO_CHF: Record<string, number> = {
   CHF: 1.0,
-  EUR: 0.94,
+  EUR: 0.91,
   USD: 0.88,
   GBP: 1.12,
-  GBP_old: 1.12,
 };
+
+// Cached live rates (fetched once per cold start)
+let liveToCHF: Record<string, number> | null = null;
+let liveRatesFetchedAt = 0;
+const RATE_CACHE_MS = 60 * 60 * 1000; // 1 hour
+
+async function fetchLiveRates(): Promise<Record<string, number>> {
+  const now = Date.now();
+  if (liveToCHF && now - liveRatesFetchedAt < RATE_CACHE_MS) return liveToCHF;
+  try {
+    const res = await fetch("https://api.frankfurter.dev/v1/latest?from=CHF&to=EUR,USD,GBP");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    // API returns CHF→X rates, we need X→CHF (invert)
+    liveToCHF = { CHF: 1.0 };
+    for (const [cur, rate] of Object.entries(data.rates as Record<string, number>)) {
+      liveToCHF[cur] = +(1 / rate).toFixed(4);
+    }
+    liveRatesFetchedAt = now;
+    console.log("Live FX rates fetched:", liveToCHF);
+    return liveToCHF;
+  } catch (err) {
+    console.warn("FX rate fetch failed, using fallbacks:", err);
+    return FALLBACK_TO_CHF;
+  }
+}
+
+// Synchronous accessor — uses cached live rates or fallback
+function getToChf(): Record<string, number> {
+  return liveToCHF ?? FALLBACK_TO_CHF;
+}
 
 interface Message {
   role: "user" | "assistant";
@@ -189,7 +219,8 @@ async function searchDuffel(params: {
 
     const deals: Deal[] = top3.map((o, i) => {
       const carrier = o.slices?.[0]?.segments?.[0]?.operating_carrier?.iata_code ?? "?";
-      const rate = TO_CHF[o.total_currency] ?? 1.0;
+      const rates = getToChf();
+      const rate = rates[o.total_currency] ?? 1.0;
       const priceChf = Math.round(parseFloat(o.total_amount) * rate);
       return {
         id: 100000 + idOffset + i,
@@ -245,7 +276,8 @@ function sanitizeCurrency(text: string, deals: Deal[]): string {
     // d.price is already in CHF. GPT might output it as "X EUR".
     eurToChf.set(d.price, d.price); // CHF amount mislabeled as EUR → same CHF
     // Also map the approximate original EUR amount (reverse of our conversion)
-    const approxEur = Math.round(d.price / 0.94);
+    const eurRate = getToChf().EUR ?? 0.91;
+    const approxEur = Math.round(d.price / eurRate);
     eurToChf.set(approxEur, d.price);
   }
 
@@ -417,6 +449,9 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
+    // Pre-fetch live FX rates (cached, non-blocking on failure)
+    await fetchLiveRates();
+
     // Require authentication
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
