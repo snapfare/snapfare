@@ -241,7 +241,7 @@ async function searchDuffel(
       .sort((a: { total_amount: string }, b: { total_amount: string }) =>
         parseFloat(a.total_amount) - parseFloat(b.total_amount)
       )
-      .slice(0, 1);
+      .slice(0, 3);
 
     const rates = getToChf();
 
@@ -498,7 +498,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "search_duffel",
       description:
-        "Search for live flight prices via the Duffel API. Only use when the user explicitly requests a live price for a specific route and departure date AND get_deals returned no matching deal for that route. Never call proactively.",
+        "Search for live flight prices via the Duffel API. Returns up to 3 cheapest options. Use when: (a) get_deals returned no deal for the user's destination, or (b) deals were shown but user wants to book/get more options for specific dates. Always ask the user for departure_date (and optionally return_date, cabin_class) before calling this tool if not already known.",
       parameters: {
         type: "object",
         properties: {
@@ -555,15 +555,18 @@ SCHRITT 1 — get_deals (IMMER zuerst, für jede Anfrage)
 → Region oder Land: destination_text nutzen (z.B. "Thailand", "Japan", "Karibik")
 → Nutzer-Präferenzen sind Kontext, keine Pflichtfilter — setze sie nur wenn es Sinn macht
 
-SCHRITT 2 — search_duffel (NUR auf explizite Anfrage)
-→ Nur aufrufen wenn der Nutzer aktiv nach einem Live-Preis für eine konkrete Route + konkretes Datum fragt (z.B. "Was kostet ZRH→BKK am 15. April?")
-→ UND get_deals hat für diese Route keinen passenden Deal geliefert
-→ Niemals automatisch aufrufen — nur wenn der Nutzer es klar verlangt
-→ Benötigt: origin, destination, departure_date
+SCHRITT 2 — search_duffel (wenn kein passender Deal gefunden ODER Nutzer will mehr)
+→ Wann aufrufen:
+  a) get_deals hat für die gewünschte Destination keinen Deal geliefert
+  b) Deals wurden gezeigt, aber Nutzer will konkret buchen / mehr Optionen / genaue Preise
+→ IMMER zuerst fehlende Details beim Nutzer erfragen (in einer einzigen Frage):
+  - Abflugdatum (Pflicht), Rückflugdatum (falls Rundreise), Abflughafen wenn unklar, Kabine falls nicht Economy
+→ Erst wenn alle nötigen Infos vorhanden: search_duffel aufrufen
+→ Liefert bis zu 3 günstigste Optionen — alle als Karten zeigen
 
 SCHRITT 3 — Fragen zu Duffel-Ergebnissen
-→ Wenn search_duffel bereits ausgeführt wurde: Fragen zu Stops, Dauer, Gepäck direkt aus dem Tool-Ergebnis beantworten — nicht erneut suchen
-→ Stops, Dauer und Gepäckinfo aus dem Ergebnis nutzen und konkret nennen
+→ Wenn search_duffel bereits ausgeführt wurde: Fragen zu Stops, Dauer, Gepäck aus dem Tool-Ergebnis beantworten — nicht erneut suchen
+→ Stops, Dauer und Gepäckinfo aus dem Ergebnis nennen wenn vorhanden
 
 REGELN
 - Immer auf Deutsch antworten
