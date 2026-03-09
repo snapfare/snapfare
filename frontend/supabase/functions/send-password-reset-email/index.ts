@@ -124,15 +124,9 @@ function buildResetEmailHtml(resetUrl: string): string {
               </table>
 
               <!-- Security note -->
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:28px;">
-                <tr>
-                  <td style="border-radius:10px;background:#111827;border:1px solid rgba(255,255,255,0.07);padding:14px 16px;">
-                    <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:13px;line-height:20px;color:#9ca3af;text-align:left;">
-                      <strong style="color:#e2e8f0;">Nicht angefordert?</strong> Ignoriere diese E-Mail — dein Konto bleibt unverändert. Der Link läuft nach 24 Stunden ab.
-                    </p>
-                  </td>
-                </tr>
-              </table>
+              <p style="margin:24px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:12px;line-height:18px;color:#475569;text-align:center;">
+                Nicht angefordert? Ignoriere diese E-Mail.<br>Der Link läuft nach 24 Stunden ab.
+              </p>
 
             </td>
           </tr>
