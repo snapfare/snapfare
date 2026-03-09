@@ -24,7 +24,7 @@ async function fetchPersonalizedDeals(
     .from("deals")
     .select("*")
     .order("scoring", { ascending: false })
-    .limit(30);
+    .limit(50);
 
   if (prefs && (prefs.preferred_origins?.length ?? 0) > 0) {
     query = query.in("origin_iata", prefs.preferred_origins);
@@ -49,6 +49,11 @@ async function fetchPersonalizedDeals(
       matchesRegion(d.destination_iata, prefs.preferred_regions)
     );
   }
+
+  // Quality filter: only show deals with score > 30, always include travel-dealz (curated)
+  deals = deals.filter(
+    (d) => (parseFloat(d.scoring ?? "0") > 30) || d.source === "travel-dealz"
+  );
 
   return deals.slice(0, 20);
 }

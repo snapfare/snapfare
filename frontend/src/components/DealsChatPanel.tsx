@@ -23,12 +23,12 @@ function normalizeMarkdown(text: string): string {
 }
 
 
-const GREETING_SUFFIX = "! Ich bin der SnapFare Agent 🛫 Ich helfe dir, die besten Flugdeals ab der Schweiz zu finden. Frag mich z.B. nach günstigen Asien-Deals, Business-Flügen oder dem besten Angebot diesen Sommer!";
+const GREETING_SUFFIX = " — ich finde die besten Flugdeals ab der Schweiz, nach Preis und Qualität bewertet. Was suchst du?";
 
 const SUGGESTIONS = [
-  "Zeig mir günstige Asien-Deals",
-  "Gibt es Business-Deals unter CHF 2000?",
-  "Was kostet ZRH→NYC nächsten Monat?",
+  "Zeig mir die besten Deals",
+  "Business-Flüge unter CHF 1500",
+  "Günstiger Langstreckenflug ab ZRH",
 ];
 
 interface DealsChatPanelProps {
