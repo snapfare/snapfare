@@ -16,7 +16,7 @@ function getPasswordStrength(pw: string) {
   };
 }
 
-type AuthTab = "login" | "register" | "reset";
+type AuthTab = "login" | "register" | "reset" | "update-password";
 
 function translateAuthError(message: string): string {
   if (message.includes("Invalid login credentials")) {
@@ -49,16 +49,25 @@ const Auth = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // If ?tab=update-password is in the URL (recovery link redirect), show that tab immediately
+    const urlTab = new URLSearchParams(window.location.search).get("tab");
+    if (urlTab === "update-password") {
+      setTab("update-password");
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        if (session?.user) {
+        if (event === "PASSWORD_RECOVERY") {
+          // Recovery link clicked — show set-new-password form, do NOT redirect
+          setTab("update-password");
+        } else if (session?.user && event !== "PASSWORD_RECOVERY") {
           navigate('/dashboard');
         }
       }
     );
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
+      if (session?.user && urlTab !== "update-password") {
         navigate('/dashboard');
       }
     });
@@ -121,6 +130,34 @@ const Auth = () => {
           title: "Fast geschafft!",
           description: "Bitte bestätige deine E-Mail-Adresse über den Link, den wir dir zugesendet haben.",
         });
+      }
+    } catch {
+      toast({ title: "Fehler", description: "Ein unerwarteter Fehler ist aufgetreten.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password !== confirmPassword) {
+      toast({ title: "Fehler", description: "Die Passwörter stimmen nicht überein.", variant: "destructive" });
+      return;
+    }
+    const pwStrength = getPasswordStrength(password);
+    if (!pwStrength.length || !pwStrength.number || !pwStrength.special) {
+      toast({ title: "Passwort zu schwach", description: "Mindestens 8 Zeichen, eine Zahl und ein Sonderzeichen erforderlich.", variant: "destructive" });
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) {
+        toast({ title: "Fehler", description: translateAuthError(error.message), variant: "destructive" });
+      } else {
+        toast({ title: "Passwort gesetzt!", description: "Du wirst jetzt zu deinem Dashboard weitergeleitet." });
+        await supabase.auth.signOut();
+        navigate('/auth');
       }
     } catch {
       toast({ title: "Fehler", description: "Ein unerwarteter Fehler ist aufgetreten.", variant: "destructive" });
@@ -311,6 +348,66 @@ const Auth = () => {
                     disabled={isLoading}
                   >
                     {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Konto erstellen"}
+                  </Button>
+                </form>
+              </TabsContent>
+
+              {/* Set new password tab (reached via recovery email link) */}
+              <TabsContent value="update-password" className="space-y-4">
+                <div className="text-center pb-2">
+                  <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-3 border border-green-500/30">
+                    <span className="text-xl">🔒</span>
+                  </div>
+                  <p className="text-sm text-gray-400">Wähle ein neues Passwort für dein Konto.</p>
+                </div>
+                <form onSubmit={handleUpdatePassword} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-password" className="text-gray-300 text-sm">Neues Passwort</Label>
+                    <Input
+                      id="new-password"
+                      type="password"
+                      placeholder="Mindestens 8 Zeichen"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      className="bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-green-400/50 focus:ring-green-400/20"
+                    />
+                    {password.length > 0 && (() => {
+                      const s = getPasswordStrength(password);
+                      return (
+                        <div className="flex gap-3 pt-1">
+                          {[
+                            { ok: s.length, label: "8+ Zeichen" },
+                            { ok: s.number, label: "Zahl" },
+                            { ok: s.special, label: "Sonderzeichen" },
+                          ].map(({ ok, label }) => (
+                            <span key={label} className={`flex items-center gap-1 text-xs ${ok ? "text-green-400" : "text-gray-500"}`}>
+                              {ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="confirm-new-password" className="text-gray-300 text-sm">Passwort bestätigen</Label>
+                    <Input
+                      id="confirm-new-password"
+                      type="password"
+                      placeholder="Passwort wiederholen"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      className="bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-green-400/50 focus:ring-green-400/20"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-semibold h-11"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Passwort speichern"}
                   </Button>
                 </form>
               </TabsContent>
