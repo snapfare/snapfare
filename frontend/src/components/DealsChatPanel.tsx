@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import DealCard from "@/components/DealCard";
 import type { Deal } from "@/hooks/usePersonalizedDeals";
 import { Send, Loader2, Sparkles, AlertTriangle } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
   role: "user" | "assistant";
@@ -163,7 +164,20 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
                     : "bg-white/10 text-gray-200 rounded-bl-sm border border-white/10"
                 }`}
               >
-                {msg.content}
+                {msg.role === "assistant" ? (
+                  <ReactMarkdown
+                    components={{
+                      p: ({ children }) => <p className="my-0.5">{children}</p>,
+                      ul: ({ children }) => <ul className="my-1 pl-4 list-disc space-y-0.5">{children}</ul>,
+                      li: ({ children }) => <li>{children}</li>,
+                      strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+                    }}
+                  >
+                    {msg.content}
+                  </ReactMarkdown>
+                ) : (
+                  msg.content
+                )}
               </div>
 
               {/* Referenced deals */}
