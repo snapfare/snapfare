@@ -19,15 +19,17 @@ app.py (root)
     secretflying_article_parser.py    — parse individual SecretFlying deal posts
     deals_pipeline.py                 — orchestrate scrape → parse → enrich → score → persist
     deals_enrichment.py               — OpenAI LLM enrichment (fill / correct modes, gpt-4o-mini)
-    duffel_service.py                 — Duffel flight price benchmark client
-    unsplash_service.py               — Unsplash destination image fetcher
-    skyscanner_links.py               — Skyscanner affiliate deep-link builder
+    duffel_service.py                 — Duffel flight price benchmark client (raw HTTP, Duffel API v2)
+    unsplash_service.py               — Unsplash destination image fetcher (JSON cache)
+    skyscanner_links.py               — Skyscanner affiliate deep-link builder (2 adults, .ch domain)
     openai_service.py                 — OpenAI client with throttling and retry
     baggage_format.py                 — normalize baggage allowance to German display string
+    email_sender.py                   — transactional email delivery
 
   scoring/
-    scoring.py                        — Duffel offer ranking (price / duration / stops)
+    scoring.py                        — deal scoring (40% price / 40% duration / 20% stops)
     miles_utils.py                    — great-circle distance + FFP miles estimation (cabin-aware rates)
+    duffel_api.py                     — Duffel Offers API client (raw HTTP, NOT the duffel-api SDK)
     html_output.py                    — render deal cards (render_deal_card / build_deals_html)
 
   database/
@@ -50,7 +52,8 @@ SecretFlying listing  ──┤
                         │
               ┌─────────▼──────────┐
               │  Deterministic     │  (miles estimate, baggage format,
-              │  enrichment        │   scoring, IATA normalization)
+              │  enrichment        │   scoring, IATA normalization,
+              │                    │   Unsplash images, Skyscanner links)
               └─────────┬──────────┘
                         │
               ┌─────────▼──────────┐
@@ -97,7 +100,7 @@ Copy `.env.example` → `.env` at the repo root and fill in credentials.
 | `SUPABASE_URL` | Yes | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes (backend) | Bypasses RLS for upserts |
 | `SUPABASE_ANON_KEY` | Fallback | Used if service role key not set |
-| `DUFFEL_API_KEY` | For Duffel | Duffel API access token |
+| `DUFFEL_API_KEY` | For Duffel | Duffel API v2 access token |
 | `DUFFEL_ASSUME_BAGGAGE` | No | Set `true` to assume baggage included for Duffel rows |
 | `OPENAI_API_KEY` | For LLM modes | GPT enrichment (gpt-4o-mini) |
 | `OPENAI_MIN_SECONDS_BETWEEN_CALLS` | No | Rate limit throttle (default: 3) |
@@ -121,7 +124,7 @@ All commands are run from the repo root:
 python app.py                               # runs default_command + default_mode from run_config.json
 python app.py deals-html --mode <mode>      # end-to-end: scrape + parse + persist + generate HTML
 python app.py pipeline --mode <mode>        # scrape + parse + persist (no HTML)
-python app.py amadeus-refresh --mode <mode> # Amadeus benchmark refresh only
+python app.py duffel-refresh --mode <mode>  # Duffel benchmark refresh only
 python app.py html-from-db --mode <mode>    # render HTML from Supabase (no scraping)
 python app.py html-snippet --mode <mode>    # generate a single deal HTML snippet
 python app.py server                        # start FastAPI server (uvicorn)
@@ -142,8 +145,8 @@ Modes configure every aspect of a pipeline run. Key fields:
 | `scraping_overfetch_travel_dealz_min/max` | How many listing items to fetch before filtering |
 | `llm.action` | `off`, `fill` (add missing fields), or `correct` (validate all fields) |
 | `llm.max_items` | Max deals sent to LLM in one run |
-| `amadeus.calls` | How many Amadeus benchmark searches to run |
-| `amadeus.origins` | Origin airports for Amadeus (e.g. `["ZRH"]`) |
+| `duffel.calls` | How many Duffel benchmark searches to run |
+| `duffel.origins` | Origin airports for Duffel (e.g. `["ZRH"]`) |
 | `html.max_items` | Max deals shown in HTML output |
 | `html.display_currency` | Currency for display (default: `CHF`) |
 
@@ -152,14 +155,15 @@ Modes configure every aspect of a pipeline run. Key fields:
 | Mode | Purpose |
 |------|---------|
 | `smoke_no_llm_1_each` | Quick smoke test: 1 deal, no LLM, no persist |
-| `verify_td1_am1_persist_no_llm` | Verify: 1 TravelDealz deal, 1 Amadeus call, persist, no LLM |
-| `verify_td1_am1_persist_llm_fill` | Same + LLM fills missing fields |
-| `verify_td1_am1_persist_llm_correct` | Same + LLM validates/corrects all fields |
-| `verify_td2_am1_persist_no_llm` | 2 TravelDealz deals (1x .de + 1x .com), 1 Amadeus call |
-| `verify_td3_persist_no_llm` | 3 TravelDealz deals, no Amadeus, no LLM |
+| `verify_td1_df1_persist_no_llm` | Verify: 1 TravelDealz deal, 1 Duffel call, persist, no LLM |
+| `verify_td1_df1_persist_llm_fill` | Same + LLM fills missing fields |
+| `verify_td1_df1_persist_llm_correct` | Same + LLM validates/corrects all fields |
+| `verify_td2_df1_persist_no_llm` | 2 TravelDealz deals (1x .de + 1x .com), 1 Duffel call |
+| `verify_td3_persist_no_llm` | 3 TravelDealz deals, no Duffel, no LLM |
 | `verify_td3_next_persist_no_llm` | Next 3 TravelDealz deals (skipping already processed) |
-| `scrape_raw_td5_am5_persist` | Raw scrape: 5 deals + 5 Amadeus calls, no enrichment |
-| `bulk_td500_am1_persist_llm_fill` | Bulk: ~500 TravelDealz + 1 Amadeus + LLM fill |
+| `full-no-llm` | Full run: 50 TravelDealz + 10 Duffel calls, persist, no LLM |
+| `full` | Same + LLM enrichment (fill mode) |
+| `duffel-only` | Duffel refresh only (25 calls) |
 
 ---
 
@@ -175,17 +179,26 @@ The `deals` table key columns:
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `booking_url` | text (unique) | Primary key equivalent |
-| `source` | text | `travel-dealz`, `secretflying`, `amadeus` |
+| `booking_url` | text (unique) | Primary key equivalent; NULL for TravelDealz (uses `link`) |
+| `skyscanner_url` | text | Skyscanner affiliate deep-link (CTA for all deals) |
+| `source` | text | `travel-dealz`, `secretflying`, `duffel` |
 | `title` | text | Deal headline |
-| `price` | numeric | Price in `currency` |
-| `currency` | text | ISO code |
+| `price` | numeric | Price in CHF |
 | `origin_iata` / `destination_iata` | text | 3-letter IATA codes |
+| `airline` | text | Airline name |
+| `aircraft` | text | Aircraft type (from Duffel; blank for TravelDealz if not in article) |
 | `cabin_class` | text | Economy, Business, Premium Economy, First |
-| `departure_date` / `return_date` | text | ISO 8601 dates |
-| `miles` | text | Estimated FFP miles (e.g. "12'400 Miles&More") |
-| `baggage_allowance_display` | text | German baggage string |
-| `scoring` | numeric | 0-100 score (higher = better deal) |
+| `stops` | integer | 0 = nonstop |
+| `flight_duration_minutes` | integer | Total flight duration |
+| `flight_duration_display` | text | Formatted duration string (e.g. "14h 30m") |
+| `travel_period_display` | text | Human-readable travel window |
+| `baggage_included` | boolean | Whether checked baggage is included |
+| `baggage_allowance_kg` | integer | Checked baggage kg allowance |
+| `baggage_pieces_included` | integer | Number of checked bags |
+| `image` | text | Unsplash destination image URL |
+| `miles` | text | FFP miles estimate (e.g. "British Airways Avios · 3'149") |
+| `tier` | text | `free` or `premium` |
+| `scoring` | text | 0–100 score string (higher = better deal) |
 | `created_at` | timestamptz | Auto-set on insert |
 
 ---
@@ -209,5 +222,5 @@ python app.py pipeline --mode smoke_no_llm_1_each
 
 **Run a persist + HTML test:**
 ```bash
-python app.py deals-html --mode verify_td2_am1_persist_no_llm
+python app.py deals-html --mode verify_td2_df1_persist_no_llm
 ```

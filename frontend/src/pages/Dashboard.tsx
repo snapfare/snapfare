@@ -18,6 +18,7 @@ import DealsChatPanel from "@/components/DealsChatPanel";
 import OnboardingScreen from "@/components/dashboard/OnboardingScreen";
 import { REGION_LABELS } from "@/lib/regionMapping";
 import type { Region } from "@/lib/regionMapping";
+import { getTimeGreeting } from "@/lib/utils";
 
 // ─── Preference form config ───────────────────────────────────────────────────
 const ORIGINS = [
@@ -71,13 +72,6 @@ function toggleItem<T>(arr: T[], item: T): T[] {
 }
 
 const DEALS_PER_PAGE = 6;
-
-function getTimeGreeting(): string {
-  const h = new Date().getHours();
-  if (h >= 5 && h < 12) return "Guten Morgen";
-  if (h >= 12 && h < 18) return "Guten Mittag";
-  return "Guten Abend";
-}
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 const Dashboard = () => {

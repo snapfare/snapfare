@@ -6,6 +6,7 @@ import DealCard from "@/components/DealCard";
 import type { Deal } from "@/hooks/usePersonalizedDeals";
 import { Send, Loader2, Sparkles, AlertTriangle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { getTimeGreeting } from "@/lib/utils";
 
 interface Message {
   role: "user" | "assistant";
@@ -21,13 +22,6 @@ function normalizeMarkdown(text: string): string {
   return text.replace(/ - (\*\*)/g, "\n- $1");
 }
 
-function getTimeGreeting(): string {
-  const h = new Date().getHours();
-  if (h >= 5 && h < 11) return "Guten Morgen";
-  if (h >= 11 && h < 14) return "Guten Mittag";
-  if (h >= 17 && h < 23) return "Guten Abend";
-  return "Hallo";
-}
 
 const GREETING_SUFFIX = "! Ich bin der SnapFare Agent 🛫 Ich helfe dir, die besten Flugdeals ab der Schweiz zu finden. Frag mich z.B. nach günstigen Asien-Deals, Business-Flügen oder dem besten Angebot diesen Sommer!";
 

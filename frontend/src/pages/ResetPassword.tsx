@@ -6,14 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, Link } from 'react-router-dom';
 import { Loader2, Plane, Check, X, AlertTriangle } from 'lucide-react';
-
-function getPasswordStrength(pw: string) {
-  return {
-    length: pw.length >= 8,
-    number: /\d/.test(pw),
-    special: /[^A-Za-z0-9]/.test(pw),
-  };
-}
+import { getPasswordStrength } from "@/lib/utils";
 
 type Status = 'loading' | 'ready' | 'error' | 'done';
 
