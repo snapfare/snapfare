@@ -88,6 +88,7 @@ interface Deal {
 async function getDeals(params: {
   origin_iata?: string | string[];
   destination_iata?: string | string[];
+  destination_text?: string;
   max_price?: number;
   cabin_class?: string;
   tier?: string;
@@ -113,6 +114,11 @@ async function getDeals(params: {
       ? params.destination_iata
       : [params.destination_iata];
     query = query.in("destination_iata", dests);
+  }
+
+  // Fuzzy text search on destination city/country name (used when no exact IATA known)
+  if (params.destination_text && !params.destination_iata) {
+    query = query.ilike("destination", `%${params.destination_text}%`);
   }
 
   if (params.max_price) {
@@ -403,7 +409,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "get_deals",
       description:
-        "Fetch current flight deals from the SnapFare database. Use this to find deals matching user criteria.",
+        "Fetch current flight deals from the SnapFare database. ALWAYS call this first before search_duffel — even for specific route requests. Use destination_iata for exact routes, destination_text for fuzzy city/country/region searches.",
       parameters: {
         type: "object",
         properties: {
@@ -413,7 +419,11 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           },
           destination_iata: {
             type: "string",
-            description: "Destination airport IATA code (e.g. BKK, JFK, DXB)",
+            description: "Destination airport IATA code (e.g. BKK, JFK, DXB). Use when user specifies a specific destination.",
+          },
+          destination_text: {
+            type: "string",
+            description: "Fuzzy text search on destination city or country name (e.g. 'Thailand', 'New York', 'Japan'). Use when no exact IATA code is known, or for broad region searches.",
           },
           max_price: {
             type: "number",
@@ -484,17 +494,19 @@ Wenn keine Deals gefunden: Freier Text, kurz.
 
 ARBEITSWEISE — wichtig, immer so vorgehen:
 
-1. ALLGEMEINE DEAL-ANFRAGEN ("zeig mir Deals", "was gibt's Günstiges"):
+1. ALLGEMEINE DEAL-ANFRAGEN ("zeig mir Deals", "was gibt's Günstiges", "irgendwas nach Asien"):
    → Nutze get_deals mit den Nutzer-Präferenzen als Standardparameter
+   → Für Länder/Regionen: nutze destination_text (z.B. "Thailand", "Japan", "New York")
    → Zeige die besten Treffer; erwähne kurz, wenn du auch ausserhalb der Präferenzen suchen kannst
 
 2. SPEZIFISCHE FLUGANFRAGEN ("ich will nach Kenya", "Flug nach Tokio im April"):
-   → Kläre zuerst fehlende Infos ab — in einer einzigen Frage, kompakt:
-      • Abflughafen (falls nicht aus Präferenzen eindeutig)
-      • Zielflughafen als IATA-Code (z.B. NBO für Nairobi)
-      • Reisedaten (Hin- und Rückflug)
-   → Sobald alle Infos da sind: search_duffel aufrufen
-   → Bei flexiblen Daten (z.B. "irgendwann im Mai"): bis zu 3 verschiedene Daten mit je einem search_duffel-Aufruf durchsuchen und die Ergebnisse vergleichen
+   → Kläre fehlende Infos in einer einzigen Frage ab (Abflughafen, Ziel, Reisedaten)
+   → Sobald die Route bekannt ist: IMMER zuerst get_deals aufrufen (mit destination_iata oder destination_text)
+   → Wenn Deals in der Datenbank gefunden: Diese zeigen — sie sind kuratiert und oft günstiger als Live-Preise
+     • Wenn der Nutzer auch ein konkretes Datum hat: Zusätzlich search_duffel für dieses Datum aufrufen und beide Ergebnisse vergleichen
+   → Wenn KEINE Deals in der Datenbank gefunden UND Datum bekannt: search_duffel aufrufen
+   → Wenn KEINE Deals und KEIN Datum: Datum erfragen, dann search_duffel
+   → Bei flexiblen Daten (z.B. "irgendwann im Mai"): bis zu 3 verschiedene Daten mit je einem search_duffel-Aufruf prüfen und die Ergebnisse vergleichen
    → Die Skyscanner-Buchungslinks erscheinen automatisch in den Deal-Karten — nie manuell verlinken
 
 3. PRÄFERENZEN sind Standardwerte, keine Einschränkungen:
