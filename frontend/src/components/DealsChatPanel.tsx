@@ -8,7 +8,7 @@ import { Send, Loader2, Sparkles, AlertTriangle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 interface Message {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "divider";
   content: string;
   deals?: Deal[];
 }
@@ -34,13 +34,52 @@ interface DealsChatPanelProps {
 }
 
 const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
-  const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", content: userName ? GREETING.replace("Hallo!", `Hallo${userName ? `, ${userName}` : ""}!`) : GREETING },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const sessionId = useRef<string>(crypto.randomUUID());
+  const persistedCount = useRef<number>(0);
+
+  // Load previous conversation on mount
+  useEffect(() => {
+    let mounted = true;
+    const loadHistory = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!mounted || !session?.user) {
+        // No session yet — show greeting
+        setMessages([{ role: "assistant", content: userName ? GREETING.replace("Hallo!", `Hallo, ${userName}!`) : GREETING }]);
+        setHistoryLoaded(true);
+        return;
+      }
+
+      const { data } = await supabase
+        .from("agent_conversations")
+        .select("role, content")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (!mounted) return;
+
+      const loaded = (data ?? []).reverse() as { role: "user" | "assistant"; content: string }[];
+
+      if (loaded.length > 0) {
+        const greeting: Message = { role: "assistant", content: userName ? GREETING.replace("Hallo!", `Hallo, ${userName}!`) : GREETING };
+        const divider: Message = { role: "divider", content: "Frühere Nachrichten" };
+        setMessages([greeting, divider, ...loaded.map((m) => ({ role: m.role, content: m.content }))]);
+        persistedCount.current = loaded.length;
+      } else {
+        setMessages([{ role: "assistant", content: userName ? GREETING.replace("Hallo!", `Hallo, ${userName}!`) : GREETING }]);
+      }
+      setHistoryLoaded(true);
+    };
+
+    loadHistory();
+    return () => { mounted = false; };
+  }, [userName]);
 
   const userMessageCount = messages.filter((m) => m.role === "user").length;
   const isAtLimit = userMessageCount >= MAX_MESSAGES;
@@ -70,6 +109,7 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
       if (!session?.access_token) return;
 
       const history = updatedMessages
+        .filter((m) => m.role === "user" || m.role === "assistant")
         .slice(-8)
         .map(({ role, content }) => ({ role, content }));
 
@@ -92,15 +132,38 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
       }
 
       const data = await response.json();
+      const assistantText = data.response ?? "Entschuldigung, ich konnte keine Antwort generieren.";
 
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: data.response ?? "Entschuldigung, ich konnte keine Antwort generieren.",
+          content: assistantText,
           deals: data.deals ?? [],
         },
       ]);
+
+      // Persist exchange to agent_conversations (fire-and-forget)
+      const msgIndex = persistedCount.current;
+      persistedCount.current += 2;
+      supabase.from("agent_conversations").insert([
+        {
+          user_id: session.user.id,
+          session_id: sessionId.current,
+          role: "user",
+          content: message,
+          message_index: msgIndex,
+        },
+        {
+          user_id: session.user.id,
+          session_id: sessionId.current,
+          role: "assistant",
+          content: assistantText,
+          message_index: msgIndex + 1,
+        },
+      ]).then(({ error }) => {
+        if (error) console.error("[chat] persist error:", error);
+      });
     } catch (err) {
       console.error("Chat send error:", err);
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -146,7 +209,7 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
       {/* Messages */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
         {/* Suggestions (shown until first user message) */}
-        {userMessageCount === 0 && (
+        {userMessageCount === 0 && historyLoaded && (
           <div className="mt-2 space-y-2">
             {SUGGESTIONS.map((suggestion) => (
               <button
@@ -160,43 +223,61 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
           </div>
         )}
 
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[85%]`}>
-              <div
-                className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                  msg.role === "user"
-                    ? "bg-gradient-to-r from-green-600/80 to-blue-600/80 text-white rounded-br-sm"
-                    : "bg-white/10 text-gray-200 rounded-bl-sm border border-white/10"
-                }`}
-              >
-                {msg.role === "assistant" ? (
-                  <ReactMarkdown
-                    components={{
-                      p: ({ children }) => <p className="my-0.5">{children}</p>,
-                      ul: ({ children }) => <ul className="my-1 pl-4 list-disc space-y-0.5">{children}</ul>,
-                      li: ({ children }) => <li>{children}</li>,
-                      strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
-                    }}
-                  >
-                    {normalizeMarkdown(msg.content)}
-                  </ReactMarkdown>
-                ) : (
-                  msg.content
+        {!historyLoaded && (
+          <div className="flex justify-center py-4">
+            <Loader2 className="w-4 h-4 text-gray-600 animate-spin" />
+          </div>
+        )}
+
+        {messages.map((msg, i) => {
+          if (msg.role === "divider") {
+            return (
+              <div key={i} className="flex items-center gap-3 py-1">
+                <div className="flex-1 h-px bg-white/10" />
+                <span className="text-[10px] text-gray-600 shrink-0">{msg.content}</span>
+                <div className="flex-1 h-px bg-white/10" />
+              </div>
+            );
+          }
+
+          return (
+            <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[85%]`}>
+                <div
+                  className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                    msg.role === "user"
+                      ? "bg-gradient-to-r from-green-600/80 to-blue-600/80 text-white rounded-br-sm"
+                      : "bg-white/10 text-gray-200 rounded-bl-sm border border-white/10"
+                  }`}
+                >
+                  {msg.role === "assistant" ? (
+                    <ReactMarkdown
+                      components={{
+                        p: ({ children }) => <p className="my-0.5">{children}</p>,
+                        ul: ({ children }) => <ul className="my-1 pl-4 list-disc space-y-0.5">{children}</ul>,
+                        li: ({ children }) => <li>{children}</li>,
+                        strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+                      }}
+                    >
+                      {normalizeMarkdown(msg.content)}
+                    </ReactMarkdown>
+                  ) : (
+                    msg.content
+                  )}
+                </div>
+
+                {/* Referenced deals */}
+                {msg.deals && msg.deals.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    {msg.deals.map((deal) => (
+                      <DealCard key={deal.id} deal={deal} compact />
+                    ))}
+                  </div>
                 )}
               </div>
-
-              {/* Referenced deals */}
-              {msg.deals && msg.deals.length > 0 && (
-                <div className="mt-2 space-y-2">
-                  {msg.deals.map((deal) => (
-                    <DealCard key={deal.id} deal={deal} compact />
-                  ))}
-                </div>
-              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {isLoading && (
           <div className="flex justify-start">
