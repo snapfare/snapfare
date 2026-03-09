@@ -16,6 +16,19 @@ const CABIN_COLORS: Record<string, string> = {
   "Premium Economy": "bg-teal-500/20 text-teal-300 border-teal-500/30",
 };
 
+function normalizeCabin(cabin: string | null | undefined): string {
+  if (!cabin) return "Economy";
+  const map: Record<string, string> = {
+    economy: "Economy",
+    business: "Business",
+    first: "First",
+    premium_economy: "Premium Economy",
+    premiumeconomy: "Premium Economy",
+    "premium economy": "Premium Economy",
+  };
+  return map[cabin.toLowerCase().replace(/\s+/g, "_")] ?? cabin;
+}
+
 function formatDuration(minutes: number | null): string {
   if (!minutes) return "";
   const h = Math.floor(minutes / 60);
@@ -33,8 +46,8 @@ function formatBaggage(deal: Deal): string {
 }
 
 const DealCard: React.FC<DealCardProps> = ({ deal, compact = false }) => {
-  const cabinBadgeClass =
-    CABIN_COLORS[deal.cabin_class ?? "Economy"] ?? "bg-white/10 text-gray-300 border-white/20";
+  const cabinLabel = normalizeCabin(deal.cabin_class);
+  const cabinBadgeClass = CABIN_COLORS[cabinLabel] ?? "bg-white/10 text-gray-300 border-white/20";
 
   const ctaUrl = deal.skyscanner_url ?? deal.link ?? "#";
 
@@ -95,7 +108,7 @@ const DealCard: React.FC<DealCardProps> = ({ deal, compact = false }) => {
         <div className="flex items-center gap-2 mb-3">
           <span className="text-xs text-gray-400 truncate">{deal.airline}</span>
           <Badge className={`text-[10px] px-1.5 py-0 border ${cabinBadgeClass} shrink-0`}>
-            {deal.cabin_class}
+            {cabinLabel}
           </Badge>
         </div>
 
