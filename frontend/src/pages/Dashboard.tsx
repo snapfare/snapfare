@@ -127,10 +127,19 @@ const Dashboard = () => {
     }
   }, [prefs, dealsLoading, user]);
 
-  // Redirect unauthenticated users
+  // Redirect unauthenticated users + enforce monthly re-login
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       navigate("/auth");
+      return;
+    }
+    if (!authLoading && isAuthenticated) {
+      const authTs = localStorage.getItem("snapfare_auth_ts");
+      const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+      if (authTs && Date.now() - parseInt(authTs, 10) > THIRTY_DAYS_MS) {
+        localStorage.removeItem("snapfare_auth_ts");
+        supabase.auth.signOut().then(() => navigate("/auth"));
+      }
     }
   }, [authLoading, isAuthenticated, navigate]);
 

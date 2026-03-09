@@ -8,12 +8,12 @@ import { Send, Loader2, Sparkles, AlertTriangle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 interface Message {
-  role: "user" | "assistant" | "divider";
+  role: "user" | "assistant";
   content: string;
   deals?: Deal[];
 }
 
-const MAX_MESSAGES = 10;
+const DAILY_LIMIT = 10;
 
 // GPT sometimes outputs "- **Key:** value" inline on one line separated by spaces.
 // This converts those into proper newline-separated markdown bullets.
@@ -34,56 +34,43 @@ interface DealsChatPanelProps {
 }
 
 const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const greeting = userName ? GREETING.replace("Hallo!", `Hallo, ${userName}!`) : GREETING;
+  const [messages, setMessages] = useState<Message[]>([{ role: "assistant", content: greeting }]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
+  // 24h message count loaded from DB on mount; incremented optimistically on each send
+  const [dailyCount, setDailyCount] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const sessionId = useRef<string>(crypto.randomUUID());
   const persistedCount = useRef<number>(0);
 
-  // Load previous conversation on mount
+  // Load 24h message count on mount (don't display old messages — fresh UI every visit)
   useEffect(() => {
     let mounted = true;
-    const loadHistory = async () => {
+    const loadCount = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!mounted || !session?.user) {
-        // No session yet — show greeting
-        setMessages([{ role: "assistant", content: userName ? GREETING.replace("Hallo!", `Hallo, ${userName}!`) : GREETING }]);
-        setHistoryLoaded(true);
-        return;
-      }
+      if (!mounted || !session?.user) { setDailyCount(0); return; }
 
-      const { data } = await supabase
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { count } = await supabase
         .from("agent_conversations")
-        .select("role, content")
+        .select("*", { count: "exact", head: true })
         .eq("user_id", session.user.id)
-        .order("created_at", { ascending: false })
-        .limit(20);
+        .eq("role", "user")
+        .gte("created_at", since);
 
-      if (!mounted) return;
-
-      const loaded = (data ?? []).reverse() as { role: "user" | "assistant"; content: string }[];
-
-      if (loaded.length > 0) {
-        const greeting: Message = { role: "assistant", content: userName ? GREETING.replace("Hallo!", `Hallo, ${userName}!`) : GREETING };
-        const divider: Message = { role: "divider", content: "Frühere Nachrichten" };
-        setMessages([greeting, divider, ...loaded.map((m) => ({ role: m.role, content: m.content }))]);
-        persistedCount.current = loaded.length;
-      } else {
-        setMessages([{ role: "assistant", content: userName ? GREETING.replace("Hallo!", `Hallo, ${userName}!`) : GREETING }]);
-      }
-      setHistoryLoaded(true);
+      if (mounted) setDailyCount(count ?? 0);
     };
-
-    loadHistory();
+    loadCount();
     return () => { mounted = false; };
-  }, [userName]);
+  }, []);
 
-  const userMessageCount = messages.filter((m) => m.role === "user").length;
-  const isAtLimit = userMessageCount >= MAX_MESSAGES;
-  const isNearLimit = userMessageCount >= MAX_MESSAGES - 2 && !isAtLimit;
+  const dailyUsed = dailyCount ?? 0;
+  const isAtLimit = dailyUsed >= DAILY_LIMIT;
+  const isNearLimit = dailyUsed >= DAILY_LIMIT - 2 && !isAtLimit;
+  // Count only user messages in current session for suggestions visibility
+  const sessionUserCount = messages.filter((m) => m.role === "user").length;
 
   const scrollToBottom = () => {
     const el = messagesContainerRef.current;
@@ -96,12 +83,13 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
 
   const handleSend = async () => {
     const message = input.trim();
-    if (!message || isLoading || isAtLimit) return;
+    if (!message || isLoading || isAtLimit || dailyCount === null) return;
 
     setInput("");
     const userMessage: Message = { role: "user", content: message };
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
+    setDailyCount((c) => (c ?? 0) + 1); // optimistic increment
     setIsLoading(true);
 
     try {
@@ -166,6 +154,8 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
       });
     } catch (err) {
       console.error("Chat send error:", err);
+      // Roll back optimistic count increment on error
+      setDailyCount((c) => Math.max(0, (c ?? 1) - 1));
       const errMsg = err instanceof Error ? err.message : String(err);
       const displayMsg = errMsg.startsWith("HTTP 5")
         ? "Server-Fehler (500). Bitte versuche es nochmal."
@@ -174,10 +164,7 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
         : "Es ist ein Fehler aufgetreten. Bitte versuche es nochmal.";
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          content: displayMsg,
-        },
+        { role: "assistant", content: displayMsg },
       ]);
     } finally {
       setIsLoading(false);
@@ -202,14 +189,14 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
           <span className="text-white font-semibold text-sm">SnapFare Agent</span>
         </div>
         <span className="text-xs text-gray-600">
-          {userMessageCount}/{MAX_MESSAGES} Nachrichten
+          {dailyCount === null ? "…" : dailyUsed}/{DAILY_LIMIT} Nachrichten heute
         </span>
       </div>
 
       {/* Messages */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
-        {/* Suggestions (shown until first user message) */}
-        {userMessageCount === 0 && historyLoaded && (
+        {/* Suggestions (shown until first user message in this session) */}
+        {sessionUserCount === 0 && (
           <div className="mt-2 space-y-2">
             {SUGGESTIONS.map((suggestion) => (
               <button
@@ -223,61 +210,43 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
           </div>
         )}
 
-        {!historyLoaded && (
-          <div className="flex justify-center py-4">
-            <Loader2 className="w-4 h-4 text-gray-600 animate-spin" />
-          </div>
-        )}
-
-        {messages.map((msg, i) => {
-          if (msg.role === "divider") {
-            return (
-              <div key={i} className="flex items-center gap-3 py-1">
-                <div className="flex-1 h-px bg-white/10" />
-                <span className="text-[10px] text-gray-600 shrink-0">{msg.content}</span>
-                <div className="flex-1 h-px bg-white/10" />
-              </div>
-            );
-          }
-
-          return (
-            <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[85%]`}>
-                <div
-                  className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                    msg.role === "user"
-                      ? "bg-gradient-to-r from-green-600/80 to-blue-600/80 text-white rounded-br-sm"
-                      : "bg-white/10 text-gray-200 rounded-bl-sm border border-white/10"
-                  }`}
-                >
-                  {msg.role === "assistant" ? (
-                    <ReactMarkdown
-                      components={{
-                        p: ({ children }) => <p className="my-0.5">{children}</p>,
-                        ul: ({ children }) => <ul className="my-1 pl-4 list-disc space-y-0.5">{children}</ul>,
-                        li: ({ children }) => <li>{children}</li>,
-                        strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
-                      }}
-                    >
-                      {normalizeMarkdown(msg.content)}
-                    </ReactMarkdown>
-                  ) : (
-                    msg.content
-                  )}
-                </div>
-
-                {/* Referenced deals */}
-                {msg.deals && msg.deals.length > 0 && (
-                  <div className="mt-2 space-y-2">
-                    {msg.deals.map((deal) => (
-                      <DealCard key={deal.id} deal={deal} compact />
-                    ))}
-                  </div>
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div className="max-w-[85%]">
+              <div
+                className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                  msg.role === "user"
+                    ? "bg-gradient-to-r from-green-600/80 to-blue-600/80 text-white rounded-br-sm"
+                    : "bg-white/10 text-gray-200 rounded-bl-sm border border-white/10"
+                }`}
+              >
+                {msg.role === "assistant" ? (
+                  <ReactMarkdown
+                    components={{
+                      p: ({ children }) => <p className="my-0.5">{children}</p>,
+                      ul: ({ children }) => <ul className="my-1 pl-4 list-disc space-y-0.5">{children}</ul>,
+                      li: ({ children }) => <li>{children}</li>,
+                      strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+                    }}
+                  >
+                    {normalizeMarkdown(msg.content)}
+                  </ReactMarkdown>
+                ) : (
+                  msg.content
                 )}
               </div>
+
+              {/* Referenced deals */}
+              {msg.deals && msg.deals.length > 0 && (
+                <div className="mt-2 space-y-2">
+                  {msg.deals.map((deal) => (
+                    <DealCard key={deal.id} deal={deal} compact />
+                  ))}
+                </div>
+              )}
             </div>
-          );
-        })}
+          </div>
+        ))}
 
         {isLoading && (
           <div className="flex justify-start">
@@ -295,13 +264,13 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
         {isNearLimit && (
           <div className="flex items-center gap-1.5 text-xs text-amber-400 mb-2">
             <AlertTriangle className="w-3 h-3" />
-            Noch {MAX_MESSAGES - userMessageCount} Nachrichten in dieser Sitzung
+            Noch {DAILY_LIMIT - dailyUsed} Nachrichten heute verfügbar
           </div>
         )}
         {isAtLimit ? (
           <div className="flex items-center gap-1.5 text-xs text-gray-500 py-2 text-center justify-center">
             <AlertTriangle className="w-3 h-3" />
-            Limit von {MAX_MESSAGES} Nachrichten erreicht. Seite neu laden für neue Sitzung.
+            Tages-Limit erreicht. Morgen wieder {DAILY_LIMIT} Nachrichten verfügbar.
           </div>
         ) : (
           <div className="flex gap-2">
@@ -311,11 +280,11 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
               onKeyDown={handleKeyDown}
               placeholder="Frag mich nach Flugdeals..."
               className="flex-1 text-sm bg-white/5 border-white/10 text-white placeholder:text-gray-600 focus:border-green-400/50 focus:ring-green-400/20 rounded-xl"
-              disabled={isLoading || isAtLimit}
+              disabled={isLoading || isAtLimit || dailyCount === null}
             />
             <Button
               onClick={handleSend}
-              disabled={!input.trim() || isLoading || isAtLimit}
+              disabled={!input.trim() || isLoading || isAtLimit || dailyCount === null}
               size="sm"
               className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white rounded-xl px-3 h-9 border-0"
             >

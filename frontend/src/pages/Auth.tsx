@@ -78,6 +78,8 @@ const Auth = () => {
           description: translateAuthError(error.message),
           variant: "destructive",
         });
+      } else {
+        localStorage.setItem("snapfare_auth_ts", Date.now().toString());
       }
     } catch {
       toast({ title: "Fehler", description: "Ein unerwarteter Fehler ist aufgetreten.", variant: "destructive" });
@@ -118,6 +120,7 @@ const Auth = () => {
         });
         setTab("login");
       } else {
+        localStorage.setItem("snapfare_auth_ts", Date.now().toString());
         toast({
           title: "Fast geschafft!",
           description: "Bitte bestätige deine E-Mail-Adresse über den Link, den wir dir zugesendet haben.",

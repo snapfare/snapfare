@@ -562,12 +562,21 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Fetch user preferences to personalise the system prompt
-    const { data: userPrefs } = await supabaseAdmin
-      .from("user_preferences")
-      .select("preferred_origins,preferred_regions,max_price_chf,cabin_classes,min_trip_days,max_trip_days,preferred_seasons")
-      .eq("user_id", user.id)
-      .single();
+    // Fetch user preferences and recent query history in parallel
+    const [{ data: userPrefs }, { data: recentQueries }] = await Promise.all([
+      supabaseAdmin
+        .from("user_preferences")
+        .select("preferred_origins,preferred_regions,max_price_chf,cabin_classes,min_trip_days,max_trip_days,preferred_seasons")
+        .eq("user_id", user.id)
+        .single(),
+      supabaseAdmin
+        .from("agent_conversations")
+        .select("content")
+        .eq("user_id", user.id)
+        .eq("role", "user")
+        .order("created_at", { ascending: false })
+        .limit(15),
+    ]);
 
     const prefsContext = userPrefs ? `
 
@@ -578,10 +587,15 @@ NUTZER-PRÄFERENZEN (standardmässig berücksichtigen, ausser der Nutzer fragt e
 - Kabine: ${(userPrefs.cabin_classes as string[])?.join(", ") || "Economy"}
 - Reisedauer: ${userPrefs.min_trip_days || 2}${userPrefs.max_trip_days ? `–${userPrefs.max_trip_days}` : "+"} Tage` : "";
 
+    // Agent memory: past queries give the agent context about what this user cares about
+    const agentMemory = recentQueries && recentQueries.length > 0
+      ? `\n\nNUTZERGEDÄCHTNIS (frühere Anfragen dieses Nutzers — nutze dies zur Personalisierung, zeige es nicht an):\n${recentQueries.map((q: { content: string }) => `- ${q.content}`).join("\n")}`
+      : "";
+
     // Build messages array — cap history at 8 messages to control token usage
     const cappedHistory = history.slice(-8);
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      { role: "system", content: SYSTEM_PROMPT + prefsContext },
+      { role: "system", content: SYSTEM_PROMPT + prefsContext + agentMemory },
       ...cappedHistory,
       { role: "user", content: message },
     ];
