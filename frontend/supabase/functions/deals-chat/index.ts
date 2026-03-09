@@ -498,7 +498,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "search_duffel",
       description:
-        "Search for live flight prices via the Duffel API. Use when the user asks about a specific route and date that may not be in the deals database.",
+        "Search for live flight prices via the Duffel API. Only use when the user explicitly requests a live price for a specific route and departure date AND get_deals returned no matching deal for that route. Never call proactively.",
       parameters: {
         type: "object",
         properties: {
@@ -548,21 +548,22 @@ Wenn keine Deals: Kurz erklären warum, dann konkret vorschlagen: anderes Budget
 
 ARBEITSWEISE
 
-1. ALLGEMEINE DEAL-ANFRAGEN ("zeig mir Deals", "was gibt's Günstiges", "irgendwas nach Asien"):
-   → get_deals mit Nutzer-Präferenzen als Standardparameter
-   → Für Länder/Regionen: destination_text nutzen (z.B. "Thailand", "Japan", "New York")
-   → Besten Score-Deal hervorheben
+SCHRITT 1 — get_deals (IMMER zuerst, für jede Anfrage)
+→ Rufe get_deals auf, bevor du irgendetwas anderes tust
+→ Allgemeine Anfragen ("zeig Deals", "was gibt's Günstiges"): breite Suche, keine engen Filter — zeig die besten Deals unabhängig von den Nutzer-Präferenzen
+→ Spezifische Route ("nach Tokio", "ZRH→BKK"): origin_iata/destination_iata setzen
+→ Region oder Land: destination_text nutzen (z.B. "Thailand", "Japan", "Karibik")
+→ Nutzer-Präferenzen sind Kontext, keine Pflichtfilter — setze sie nur wenn es Sinn macht
 
-2. SPEZIFISCHE FLUGANFRAGEN ("ich will nach Kenya", "Flug nach Tokio im April"):
-   → Fehlende Infos in einer einzigen Frage klären
-   → Route bekannt: IMMER zuerst get_deals aufrufen
-   → Deals gefunden + konkretes Datum: zusätzlich search_duffel aufrufen und vergleichen
-   → Keine Deals + Datum bekannt: search_duffel aufrufen
-   → Keine Deals + kein Datum: Datum erfragen, dann search_duffel
-   → Flexible Daten ("irgendwann im Mai"): bis zu 3 Daten mit search_duffel prüfen
+SCHRITT 2 — search_duffel (NUR auf explizite Anfrage)
+→ Nur aufrufen wenn der Nutzer aktiv nach einem Live-Preis für eine konkrete Route + konkretes Datum fragt (z.B. "Was kostet ZRH→BKK am 15. April?")
+→ UND get_deals hat für diese Route keinen passenden Deal geliefert
+→ Niemals automatisch aufrufen — nur wenn der Nutzer es klar verlangt
+→ Benötigt: origin, destination, departure_date
 
-3. PRÄFERENZEN sind Standardwerte, keine Einschränkungen:
-   → Nutzer fragt explizit nach anderem: Präferenzen ignorieren
+SCHRITT 3 — Fragen zu Duffel-Ergebnissen
+→ Wenn search_duffel bereits ausgeführt wurde: Fragen zu Stops, Dauer, Gepäck direkt aus dem Tool-Ergebnis beantworten — nicht erneut suchen
+→ Stops, Dauer und Gepäckinfo aus dem Ergebnis nutzen und konkret nennen
 
 REGELN
 - Immer auf Deutsch antworten
