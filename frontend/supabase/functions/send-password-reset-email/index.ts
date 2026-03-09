@@ -82,44 +82,41 @@ function buildResetEmailHtml(resetUrl: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Passwort zurücksetzen</title>
 </head>
-<body style="margin:0;padding:0;background-color:#060d1a;-webkit-font-smoothing:antialiased;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#060d1a;">
+<body style="margin:0;padding:0;background-color:#0a0f1e;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0a0f1e;">
     <tr>
-      <td align="center" style="padding:32px 16px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="width:560px;max-width:560px;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.07);">
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="520" style="width:520px;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);">
 
-          <!-- Gradient header -->
+          <!-- Header -->
           <tr>
-            <td style="background:linear-gradient(135deg,#064e3b 0%,#1e3a5f 60%,#1e1b4b 100%);padding:30px 32px 26px 32px;text-align:center;">
-              <h1 style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;">SnapFare</h1>
-              <p style="margin:4px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:13px;color:rgba(255,255,255,0.55);">Vollautomatisierte Schnäppchenjagd</p>
+            <td align="center" style="background:linear-gradient(135deg,#065f46 0%,#1e40af 100%);padding:28px 32px;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:26px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">SnapFare</p>
             </td>
           </tr>
 
           <!-- Body -->
           <tr>
-            <td style="background:#0b1220;padding:36px 32px 32px 32px;text-align:center;">
+            <td align="center" style="background:#0d1526;padding:40px 32px 32px 32px;">
 
               <!-- Icon -->
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 18px auto;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 20px auto;">
                 <tr>
-                  <td style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#064e3b,#1e3a5f);border:1px solid rgba(16,185,129,0.25);text-align:center;vertical-align:middle;">
-                    <span style="font-size:26px;line-height:56px;display:block;">🔑</span>
+                  <td align="center" valign="middle" style="width:54px;height:54px;border-radius:12px;background:#0a1f35;border:1px solid rgba(59,130,246,0.3);">
+                    <span style="font-size:24px;">🔑</span>
                   </td>
                 </tr>
               </table>
 
-              <h2 style="margin:0 0 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:21px;font-weight:700;color:#f1f5f9;">Passwort zurücksetzen</h2>
-              <p style="margin:0 auto 28px auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:14px;line-height:22px;color:#64748b;max-width:380px;">
-                Klicke auf den Button, um ein neues Passwort für dein SnapFare-Konto zu setzen.
-              </p>
+              <p style="margin:0 0 8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:20px;font-weight:700;color:#f8fafc;text-align:center;">Passwort zurücksetzen</p>
+              <p style="margin:0 0 28px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:14px;line-height:21px;color:#64748b;text-align:center;">Setze jetzt ein neues Passwort für dein Konto.</p>
 
               <!-- CTA -->
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
                 <tr>
-                  <td style="border-radius:12px;background:linear-gradient(135deg,#1d4ed8,#2264f5);">
+                  <td align="center" style="border-radius:10px;background:#2563eb;">
                     <a href="${resetUrl}" target="_blank"
-                       style="display:inline-block;padding:14px 38px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;">
+                       style="display:inline-block;padding:13px 36px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:0.1px;">
                       Passwort zurücksetzen
                     </a>
                   </td>
@@ -129,11 +126,10 @@ function buildResetEmailHtml(resetUrl: string): string {
               <!-- Security note -->
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:28px;">
                 <tr>
-                  <td style="border-radius:12px;background:#0f1729;border:1px solid rgba(245,158,11,0.18);padding:14px 18px;text-align:left;">
-                    <p style="margin:0 0 4px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:13px;line-height:19px;color:#94a3b8;">
-                      <span style="color:#f59e0b;">⚠</span>&nbsp;<strong style="color:#cbd5e1;">Nicht du?</strong>&nbsp;Dann kannst du diese E-Mail ignorieren — dein Konto bleibt unverändert.
+                  <td style="border-radius:10px;background:#111827;border:1px solid rgba(255,255,255,0.07);padding:14px 16px;">
+                    <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:13px;line-height:20px;color:#9ca3af;text-align:left;">
+                      <strong style="color:#e2e8f0;">Nicht angefordert?</strong> Ignoriere diese E-Mail — dein Konto bleibt unverändert. Der Link läuft nach 24 Stunden ab.
                     </p>
-                    <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:11px;line-height:16px;color:#334155;">Der Link ist 24 Stunden gültig.</p>
                   </td>
                 </tr>
               </table>
@@ -143,10 +139,8 @@ function buildResetEmailHtml(resetUrl: string): string {
 
           <!-- Footer -->
           <tr>
-            <td style="background:#070e1c;padding:16px 32px;text-align:center;border-top:1px solid rgba(255,255,255,0.05);">
-              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:11px;line-height:16px;color:#1e293b;">
-                © 2026 SnapFare &nbsp;·&nbsp; Passwort-Reset angefordert für dein Konto
-              </p>
+            <td align="center" style="background:#070c18;padding:16px 32px;border-top:1px solid rgba(255,255,255,0.05);">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:11px;color:#4b5563;">© 2026 SnapFare</p>
             </td>
           </tr>
 
