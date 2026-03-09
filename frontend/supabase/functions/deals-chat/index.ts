@@ -234,6 +234,67 @@ async function searchDuffel(params: {
   }
 }
 
+// Post-process GPT text: deterministically fix currency issues.
+// GPT's training data says Duffel returns EUR, so it ignores all prompt
+// instructions. We fix the output instead of fighting the model.
+function sanitizeCurrency(text: string, deals: Deal[]): string {
+  // Build a map of approximate EUR amounts → correct CHF amounts.
+  // GPT may output the original EUR amount (before our conversion) or our CHF amount mislabeled as EUR.
+  const eurToChf = new Map<number, number>();
+  for (const d of deals) {
+    // d.price is already in CHF. GPT might output it as "X EUR".
+    eurToChf.set(d.price, d.price); // CHF amount mislabeled as EUR → same CHF
+    // Also map the approximate original EUR amount (reverse of our conversion)
+    const approxEur = Math.round(d.price / 0.94);
+    eurToChf.set(approxEur, d.price);
+  }
+
+  let result = text;
+
+  // Remove "(ca. XXX CHF)" or "(ca. CHF XXX)" parenthetical conversions
+  result = result.replace(/\s*\(ca\.\s*(?:CHF\s*)?\d[\d'.]*\s*(?:CHF)?\s*\)/gi, "");
+
+  // Replace "XXX.XX EUR" or "XXX EUR" with "CHF YYY" using closest match
+  result = result.replace(/(\d[\d'.]*)\s*EUR/gi, (match, numStr) => {
+    const num = Math.round(parseFloat(numStr.replace(/'/g, "")));
+    // Find closest match in our map
+    let bestChf = num; // fallback: use same number
+    let bestDist = Infinity;
+    for (const [eurVal, chfVal] of eurToChf) {
+      const dist = Math.abs(eurVal - num);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestChf = chfVal;
+      }
+    }
+    // Only substitute if reasonably close (within 10%)
+    if (bestDist <= num * 0.1) {
+      return `CHF ${bestChf}`;
+    }
+    return `CHF ${num}`; // just swap label
+  });
+
+  // Also fix "EUR XXX" format (EUR before number)
+  result = result.replace(/EUR\s*(\d[\d'.]*)/gi, (match, numStr) => {
+    const num = Math.round(parseFloat(numStr.replace(/'/g, "")));
+    let bestChf = num;
+    let bestDist = Infinity;
+    for (const [eurVal, chfVal] of eurToChf) {
+      const dist = Math.abs(eurVal - num);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestChf = chfVal;
+      }
+    }
+    if (bestDist <= num * 0.1) {
+      return `CHF ${bestChf}`;
+    }
+    return `CHF ${num}`;
+  });
+
+  return result;
+}
+
 const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: "function",
@@ -500,6 +561,9 @@ NUTZER-PRÄFERENZEN (standardmässig berücksichtigen, ausser der Nutzer fragt e
       }
       responseText = responseText.replace(/\n?\[DEALS:[\d,\s-]*\]/, "").trimEnd();
     }
+
+    // Deterministic fix: replace any EUR references with correct CHF values
+    responseText = sanitizeCurrency(responseText, selectedDeals);
 
     return new Response(
       JSON.stringify({
