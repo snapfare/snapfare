@@ -49,27 +49,19 @@ const Auth = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // If ?tab=update-password is in the URL (recovery link redirect), show that tab immediately
-    const urlTab = new URLSearchParams(window.location.search).get("tab");
-    if (urlTab === "update-password") {
-      setTab("update-password");
-    }
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (event === "PASSWORD_RECOVERY") {
-          // Recovery link clicked — show set-new-password form, do NOT redirect
-          setTab("update-password");
-        } else if (session?.user && event !== "PASSWORD_RECOVERY") {
+          // Recovery links now go to /reset-password — redirect there
+          navigate('/reset-password');
+        } else if (session?.user) {
           navigate('/dashboard');
         }
       }
     );
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user && urlTab !== "update-password") {
-        navigate('/dashboard');
-      }
+      if (session?.user) navigate('/dashboard');
     });
 
     return () => subscription.unsubscribe();
@@ -171,7 +163,7 @@ const Auth = () => {
     setIsLoading(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth?tab=update-password`,
+        redirectTo: `${window.location.origin}/reset-password`,
       });
       if (error) {
         toast({ title: "Fehler", description: translateAuthError(error.message), variant: "destructive" });
