@@ -241,7 +241,7 @@ async function searchDuffel(
       .sort((a: { total_amount: string }, b: { total_amount: string }) =>
         parseFloat(a.total_amount) - parseFloat(b.total_amount)
       )
-      .slice(0, 3);
+      .slice(0, 1);
 
     const rates = getToChf();
 
@@ -498,7 +498,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "search_duffel",
       description:
-        "Search for live flight prices via the Duffel API. Returns up to 3 cheapest options. Use when: (a) get_deals returned no deal for the user's destination, or (b) deals were shown but user wants to book/get more options for specific dates. Always ask the user for departure_date (and optionally return_date, cabin_class) before calling this tool if not already known.",
+        "Search for live flight prices via the Duffel API. Returns the cheapest option. Use when: (a) get_deals returned no deal for the user's destination, or (b) deals were shown but user wants to book/get more options for specific dates. Always ask the user for departure_date (and optionally return_date, cabin_class) before calling this tool if not already known.",
       parameters: {
         type: "object",
         properties: {
@@ -562,7 +562,7 @@ SCHRITT 2 — search_duffel (wenn kein passender Deal gefunden ODER Nutzer will 
 → IMMER zuerst fehlende Details beim Nutzer erfragen (in einer einzigen Frage):
   - Abflugdatum (Pflicht), Rückflugdatum (falls Rundreise), Abflughafen wenn unklar, Kabine falls nicht Economy
 → Erst wenn alle nötigen Infos vorhanden: search_duffel aufrufen
-→ Liefert bis zu 3 günstigste Optionen — alle als Karten zeigen
+→ Liefert die günstigste Option als Karte
 
 SCHRITT 3 — Fragen zu Duffel-Ergebnissen
 → Wenn search_duffel bereits ausgeführt wurde: Fragen zu Stops, Dauer, Gepäck aus dem Tool-Ergebnis beantworten — nicht erneut suchen
