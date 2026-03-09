@@ -152,14 +152,18 @@ function buildSkyscannerUrl(
   return `https://www.skyscanner.ch/transport/fluge/${path}?adultsv2=2&cabinclass=${cabin}`;
 }
 
-// Tool: search Duffel API for live flight prices
-async function searchDuffel(params: {
-  origin: string;
-  destination: string;
-  departure_date: string;
-  return_date?: string;
-  cabin_class?: string;
-}, idOffset = 0): Promise<{ summary: string; deals: Deal[] }> {
+// Tool: search Duffel API for live flight prices.
+// Results are saved to chat_deals (user-scoped, separate from public deals table).
+async function searchDuffel(
+  params: {
+    origin: string;
+    destination: string;
+    departure_date: string;
+    return_date?: string;
+    cabin_class?: string;
+  },
+  userId: string
+): Promise<{ summary: string; deals: Deal[] }> {
   if (!DUFFEL_API_KEY) return { summary: "Duffel API not configured", deals: [] };
 
   try {
@@ -217,28 +221,24 @@ async function searchDuffel(params: {
       )
       .slice(0, 3);
 
-    const deals: Deal[] = top3.map((o, i) => {
+    const rates = getToChf();
+
+    // Build rows to insert into chat_deals (user-scoped, never shown in public deals section)
+    const rows = top3.map((o) => {
       const carrier = o.slices?.[0]?.segments?.[0]?.operating_carrier?.iata_code ?? "?";
-      const rates = getToChf();
       const rate = rates[o.total_currency] ?? 1.0;
       const priceChf = Math.round(parseFloat(o.total_amount) * rate);
       return {
-        id: 100000 + idOffset + i,
+        user_id: userId,
         title: `${carrier}: ${params.origin}→${params.destination}`,
+        price: priceChf,
+        currency: "CHF",
         origin_iata: params.origin,
         destination_iata: params.destination,
         origin: params.origin,
         destination: params.destination,
         airline: carrier,
         cabin_class: params.cabin_class ?? "economy",
-        price: priceChf,
-        currency: "CHF",
-        stops: null,
-        flight_duration_display: null,
-        baggage_included: null,
-        baggage_allowance_kg: null,
-        image: null,
-        tier: "free",
         travel_period_display: params.return_date
           ? `${params.departure_date} – ${params.return_date}`
           : params.departure_date,
@@ -249,14 +249,48 @@ async function searchDuffel(params: {
           params.return_date,
           params.cabin_class
         ),
-        miles: null,
-        scoring: null,
       };
     });
 
-    const summary = `${deals.length} Flüge gefunden (${params.origin}→${params.destination}, ${params.departure_date}), günstigster ab CHF ${deals[0]?.price ?? "?"}: ` +
-      deals.map((d) => `${d.airline} CHF ${d.price} (ID ${d.id})`).join(", ") +
-      `. Währung ist CHF (Schweizer Franken), nicht EUR.`;
+    // Insert into chat_deals and get back the assigned IDs
+    const { data: inserted, error } = await supabaseAdmin
+      .from("chat_deals")
+      .insert(rows)
+      .select("id,title,origin_iata,destination_iata,origin,destination,airline,cabin_class,price,currency,travel_period_display,skyscanner_url");
+
+    if (error || !inserted || inserted.length === 0) {
+      console.error("chat_deals insert error:", error);
+      return { summary: "Could not save live flight results.", deals: [] };
+    }
+
+    // Map inserted rows to Deal shape (fields not in chat_deals default to null)
+    const deals: Deal[] = inserted.map((row: Record<string, unknown>) => ({
+      id: row.id as number,
+      title: row.title as string,
+      origin_iata: row.origin_iata as string,
+      destination_iata: row.destination_iata as string,
+      origin: row.origin as string,
+      destination: row.destination as string,
+      airline: row.airline as string,
+      cabin_class: row.cabin_class as string,
+      price: row.price as number,
+      currency: row.currency as string,
+      stops: null,
+      flight_duration_display: null,
+      baggage_included: null,
+      baggage_allowance_kg: null,
+      image: null,
+      tier: "free",
+      travel_period_display: row.travel_period_display as string | null,
+      skyscanner_url: row.skyscanner_url as string | null,
+      miles: null,
+      scoring: null,
+    }));
+
+    const summary =
+      `${deals.length} Flüge gefunden (${params.origin}→${params.destination}, ${params.departure_date}): ` +
+      deals.map((d) => `${d.airline} (ID ${d.id})`).join(", ") +
+      `. Preise werden in den Deal-Karten angezeigt. Nenne KEINE Preise im Text.`;
 
     return { summary, deals };
   } catch (err) {
@@ -550,7 +584,7 @@ NUTZER-PRÄFERENZEN (standardmässig berücksichtigen, ausser der Nutzer fragt e
                 )
               : "Keine Deals für diese Kriterien gefunden.";
         } else if (toolCall.function.name === "search_duffel") {
-          const duffelResult = await searchDuffel(args, sourcedDeals.length);
+          const duffelResult = await searchDuffel(args, user.id);
           sourcedDeals = [...sourcedDeals, ...duffelResult.deals];
           result = duffelResult.summary;
         }
