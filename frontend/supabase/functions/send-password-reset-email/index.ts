@@ -82,88 +82,70 @@ function buildResetEmailHtml(resetUrl: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Passwort zurücksetzen</title>
 </head>
-<body style="margin:0;padding:0;background-color:#0b1120;-webkit-font-smoothing:antialiased;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0b1120;">
+<body style="margin:0;padding:0;background-color:#060d1a;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#060d1a;">
     <tr>
-      <td align="center" style="padding:24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="width:640px;border-radius:18px;background:linear-gradient(135deg,#020617,#020617);border-collapse:separate;overflow:hidden;">
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="width:560px;max-width:560px;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.07);">
 
-          <!-- Header -->
+          <!-- Gradient header -->
           <tr>
-            <td style="padding:28px 24px 18px 24px;text-align:center;">
-              <h1 style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:28px;line-height:34px;color:#e5e7eb;">
-                SnapFare
-              </h1>
-              <p style="margin:6px 0 0 0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px;line-height:20px;color:#9ca3af;">
-                Vollautomatisierte Schnäppchenjagd – die besten Reisedeals direkt in deiner Inbox.
-              </p>
+            <td style="background:linear-gradient(135deg,#064e3b 0%,#1e3a5f 60%,#1e1b4b 100%);padding:30px 32px 26px 32px;text-align:center;">
+              <h1 style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;">SnapFare</h1>
+              <p style="margin:4px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:13px;color:rgba(255,255,255,0.55);">Vollautomatisierte Schnäppchenjagd</p>
             </td>
           </tr>
 
-          <!-- Icon + Title -->
+          <!-- Body -->
           <tr>
-            <td style="padding:4px 24px 8px 24px;text-align:center;">
-              <div style="margin:0 auto 12px auto;width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#1e3a5f,#1e2d5a);border:1px solid rgba(96,165,250,0.25);display:flex;align-items:center;justify-content:center;">
-                <span style="font-size:26px;line-height:52px;">🔑</span>
-              </div>
-              <h2 style="margin:0 0 8px 0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:20px;line-height:28px;color:#e5e7eb;font-weight:700;">
-                Passwort zurücksetzen
-              </h2>
-              <p style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px;line-height:22px;color:#cbd5e1;text-align:center;max-width:440px;margin:0 auto;">
-                Du hast eine Anfrage zum Zurücksetzen deines SnapFare-Passworts erhalten. Klicke auf den Button, um ein neues Passwort zu setzen.
-              </p>
-            </td>
-          </tr>
+            <td style="background:#0b1220;padding:36px 32px 32px 32px;text-align:center;">
 
-          <!-- CTA -->
-          <tr>
-            <td style="padding:24px 24px 8px 24px;text-align:center;">
-              <a href="${resetUrl}" target="_blank"
-                 style="display:inline-block;background:#2264f5;color:#ffffff;text-decoration:none;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:15px;font-weight:700;padding:14px 32px;border-radius:12px;border:1px solid rgba(255,255,255,0.06);">
-                Passwort jetzt zurücksetzen
-              </a>
-            </td>
-          </tr>
-
-          <!-- Security note -->
-          <tr>
-            <td style="padding:18px 24px 4px 24px;">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
-                     style="border-radius:14px;background:linear-gradient(135deg,#1c1f2e,#0b1120);border:1px solid rgba(255,255,255,0.07);">
+              <!-- Icon -->
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 18px auto;">
                 <tr>
-                  <td style="padding:16px 18px;">
-                    <p style="margin:0 0 6px 0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:13px;line-height:20px;color:#9ca3af;">
-                      ⚠️ <strong style="color:#d1d5db;">Nicht du?</strong> Wenn du kein neues Passwort angefordert hast, kannst du diese E-Mail einfach ignorieren — dein Konto bleibt unverändert.
-                    </p>
-                    <p style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:12px;line-height:18px;color:#6b7280;">
-                      Der Link ist 24 Stunden gültig.
-                    </p>
+                  <td style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#064e3b,#1e3a5f);border:1px solid rgba(16,185,129,0.25);text-align:center;vertical-align:middle;">
+                    <span style="font-size:26px;line-height:56px;display:block;">🔑</span>
                   </td>
                 </tr>
               </table>
-            </td>
-          </tr>
 
-          <!-- Closing -->
-          <tr>
-            <td style="padding:20px 24px 20px 24px;text-align:center;">
-              <p style="margin:0 0 4px 0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px;line-height:20px;color:#cbd5e1;">
-                Viel Spaß beim nächsten Deal-Hunting!
+              <h2 style="margin:0 0 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:21px;font-weight:700;color:#f1f5f9;">Passwort zurücksetzen</h2>
+              <p style="margin:0 auto 28px auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:14px;line-height:22px;color:#64748b;max-width:380px;">
+                Klicke auf den Button, um ein neues Passwort für dein SnapFare-Konto zu setzen.
               </p>
-              <p style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px;line-height:20px;color:#e5e7eb;font-weight:600;">
-                Dein SnapFare Team
-              </p>
+
+              <!-- CTA -->
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+                <tr>
+                  <td style="border-radius:12px;background:linear-gradient(135deg,#1d4ed8,#2264f5);">
+                    <a href="${resetUrl}" target="_blank"
+                       style="display:inline-block;padding:14px 38px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;">
+                      Passwort zurücksetzen
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Security note -->
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:28px;">
+                <tr>
+                  <td style="border-radius:12px;background:#0f1729;border:1px solid rgba(245,158,11,0.18);padding:14px 18px;text-align:left;">
+                    <p style="margin:0 0 4px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:13px;line-height:19px;color:#94a3b8;">
+                      <span style="color:#f59e0b;">⚠</span>&nbsp;<strong style="color:#cbd5e1;">Nicht du?</strong>&nbsp;Dann kannst du diese E-Mail ignorieren — dein Konto bleibt unverändert.
+                    </p>
+                    <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:11px;line-height:16px;color:#334155;">Der Link ist 24 Stunden gültig.</p>
+                  </td>
+                </tr>
+              </table>
+
             </td>
           </tr>
 
           <!-- Footer -->
           <tr>
-            <td style="padding:16px 24px 18px 24px;border-top:1px solid #111827;text-align:center;background:#020617;">
-              <p style="margin:0 0 6px 0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:11px;line-height:16px;color:#6b7280;">
-                Du erhältst diese E-Mail, weil für dein SnapFare-Konto ein Passwort-Reset angefordert wurde.
-              </p>
-              <p style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:11px;line-height:16px;color:#4b5563;">
-                © 2026 SnapFare. Alle Rechte vorbehalten.
+            <td style="background:#070e1c;padding:16px 32px;text-align:center;border-top:1px solid rgba(255,255,255,0.05);">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:11px;line-height:16px;color:#1e293b;">
+                © 2026 SnapFare &nbsp;·&nbsp; Passwort-Reset angefordert für dein Konto
               </p>
             </td>
           </tr>
