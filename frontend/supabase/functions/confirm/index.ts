@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Resend } from "resend";
+import { Resend } from "npm:resend@4.0.0";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 const supabaseAdmin = createClient(
@@ -120,79 +120,45 @@ function buildWelcomeEmailHtml(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Willkommen bei SnapFare</title>
 </head>
-<body style="margin:0;padding:0;background-color:#0b1120;-webkit-font-smoothing:antialiased;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0b1120;">
+<body style="margin:0;padding:0;background-color:#0a0f1e;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0a0f1e;">
     <tr>
-      <td align="center" style="padding:24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="width:640px;border-radius:18px;background:linear-gradient(135deg,#020617,#020617);border-collapse:separate;overflow:hidden;">
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="520" style="width:520px;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);">
 
           <!-- Header -->
           <tr>
-            <td style="padding:28px 24px 18px 24px;text-align:center;">
-              <h1 style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:28px;line-height:34px;color:#e5e7eb;">
-                SnapFare
-              </h1>
-              <p style="margin:6px 0 0 0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px;line-height:20px;color:#9ca3af;">
-                Vollautomatisierte Schnäppchenjagd – die besten Reisedeals direkt in deiner Inbox.
-              </p>
+            <td align="center" style="background:linear-gradient(135deg,#065f46 0%,#1e40af 100%);padding:28px 32px;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:26px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">SnapFare</p>
             </td>
           </tr>
 
-          <!-- Welcome / Intro -->
+          <!-- Body -->
           <tr>
-            <td style="padding:2px 24px 8px 24px;text-align:center;">
-              <h2 style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:20px;line-height:34px;color:#e5e7eb;">
-                Willkommen an Bord! 🚀
-              </h2>
-              <p style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px;line-height:22px;color:#cbd5e1;text-align:center;">
-                Vielen Dank für deine Anmeldung bei SnapFare! Du bist jetzt dabei – wir schicken dir regelmässig die besten Flugdeals ab der Schweiz.
-              </p>
-            </td>
-          </tr>
+            <td align="center" style="background:#0d1526;padding:36px 32px 28px 32px;">
 
-          <!-- What happens next -->
-          <tr>
-            <td style="padding:18px 24px 4px 24px;">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
-                     style="border-radius:14px;background:linear-gradient(135deg,#022c22,#0b1120);border:1px solid rgba(16,185,129,0.25);">
+              <p style="margin:0 0 6px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:20px;font-weight:700;color:#f8fafc;text-align:center;">Willkommen an Bord! 🚀</p>
+              <p style="margin:0 0 24px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:14px;line-height:21px;color:#64748b;text-align:center;">Du bist jetzt dabei — wir schicken dir die besten Flugdeals ab der Schweiz.</p>
+
+              <!-- What happens next -->
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                 <tr>
-                  <td style="padding:18px 18px 16px 18px;">
-                    <h3 style="margin:0 0 10px 0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:16px;line-height:22px;color:#bbf7d0;font-weight:600;text-align:center;">
-                      Was passiert als nächstes?
-                    </h3>
-                    <ul style="margin:0;padding:0 0 0 18px;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:13px;line-height:20px;color:#d1fae5;">
-                      <li style="margin-bottom:4px;">🔍 Du erhältst regelmässig Newsletter mit den besten Flugdeals ab der Schweiz.</li>
-                      <li style="margin-bottom:4px;">📱 Bald bekommst du Zugang zur personalisierten Flugsuche mit 1-Klick-Buchung.</li>
-                      <li style="margin-bottom:4px;">🎯 Optional kannst du später Premium dazubuchen (Business &amp; Meilendeals).</li>
-                      <li>💰 Ziel: Ab der ersten Buchung möglichst viel sparen – ganz ohne Aufwand für dich.</li>
-                    </ul>
+                  <td style="border-radius:12px;background:#111827;border:1px solid rgba(16,185,129,0.2);padding:18px 20px;text-align:left;">
+                    <p style="margin:0 0 12px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:13px;font-weight:600;color:#e2e8f0;text-align:center;">Was passiert als nächstes?</p>
+                    <p style="margin:0 0 7px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:13px;line-height:19px;color:#94a3b8;">✈️&nbsp; Regelmässige Newsletter mit kuratierten Flugdeals ab der Schweiz.</p>
+                    <p style="margin:0 0 7px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:13px;line-height:19px;color:#94a3b8;">🎯&nbsp; Optional: Premium für Business- &amp; Meilendeals dazubuchen.</p>
+                    <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:13px;line-height:19px;color:#94a3b8;">💰&nbsp; Ziel: Ab der ersten Buchung spürbar sparen.</p>
                   </td>
                 </tr>
               </table>
-            </td>
-          </tr>
 
-          <!-- Closing -->
-          <tr>
-            <td style="padding:20px 24px 20px 24px;text-align:center;">
-              <p style="margin:0 0 4px 0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px;line-height:20px;color:#cbd5e1;">
-                Viel Spass beim Stöbern &amp; danke für dein Vertrauen!
-              </p>
-              <p style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px;line-height:20px;color:#e5e7eb;font-weight:600;">
-                Dein SnapFare Team
-              </p>
             </td>
           </tr>
 
           <!-- Footer -->
           <tr>
-            <td style="padding:16px 24px 18px 24px;border-top:1px solid #111827;text-align:center;background:#020617;">
-              <p style="margin:0 0 6px 0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:11px;line-height:16px;color:#6b7280;">
-                Du erhältst diese E-Mail, weil du dich bei SnapFare angemeldet hast.
-              </p>
-              <p style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:11px;line-height:16px;color:#4b5563;">
-                © 2026 SnapFare. Alle Rechte vorbehalten.
-              </p>
+            <td align="center" style="background:#070c18;padding:16px 32px;border-top:1px solid rgba(255,255,255,0.05);">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:11px;color:#4b5563;">© 2026 SnapFare &nbsp;·&nbsp; Du erhältst diese E-Mail weil du dich angemeldet hast.</p>
             </td>
           </tr>
 
