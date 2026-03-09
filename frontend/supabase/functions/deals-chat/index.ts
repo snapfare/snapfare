@@ -129,7 +129,7 @@ async function searchDuffel(params: {
   departure_date: string;
   return_date?: string;
   cabin_class?: string;
-}): Promise<{ summary: string; deals: Deal[] }> {
+}, idOffset = 0): Promise<{ summary: string; deals: Deal[] }> {
   if (!DUFFEL_API_KEY) return { summary: "Duffel API not configured", deals: [] };
 
   try {
@@ -192,7 +192,7 @@ async function searchDuffel(params: {
       const rate = TO_CHF[o.total_currency] ?? 1.0;
       const priceChf = Math.round(parseFloat(o.total_amount) * rate);
       return {
-        id: -(i + 1),
+        id: -(idOffset + i + 1),
         title: `${carrier}: ${params.origin}→${params.destination}`,
         origin_iata: params.origin,
         destination_iata: params.destination,
@@ -466,7 +466,7 @@ NUTZER-PRÄFERENZEN (standardmässig berücksichtigen, ausser der Nutzer fragt e
                 )
               : "Keine Deals für diese Kriterien gefunden.";
         } else if (toolCall.function.name === "search_duffel") {
-          const duffelResult = await searchDuffel(args);
+          const duffelResult = await searchDuffel(args, sourcedDeals.length);
           sourcedDeals = [...sourcedDeals, ...duffelResult.deals];
           result = duffelResult.summary;
         }
