@@ -223,8 +223,9 @@ async function searchDuffel(params: {
       };
     });
 
-    const summary = `Live prices (${params.origin}→${params.destination}, ${params.departure_date}): ` +
-      deals.map((d) => `${d.airline}: CHF ${d.price}`).join(" | ");
+    const summary = `Preise bereits in CHF umgerechnet (${params.origin}→${params.destination}, ${params.departure_date}): ` +
+      deals.map((d) => `${d.airline}: CHF ${d.price}`).join(" | ") +
+      ` — diese Preise sind fertig in CHF, niemals selbst umrechnen oder EUR erwähnen.`;
 
     return { summary, deals };
   } catch (err) {
