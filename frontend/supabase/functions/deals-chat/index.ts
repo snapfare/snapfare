@@ -223,9 +223,9 @@ async function searchDuffel(params: {
       };
     });
 
-    const summary = `Preise bereits in CHF umgerechnet (${params.origin}→${params.destination}, ${params.departure_date}): ` +
-      deals.map((d) => `${d.airline}: CHF ${d.price}`).join(" | ") +
-      ` — diese Preise sind fertig in CHF, niemals selbst umrechnen oder EUR erwähnen.`;
+    const summary = `${deals.length} Flüge gefunden (${params.origin}→${params.destination}, ${params.departure_date}): ` +
+      deals.map((d) => `${d.airline} (ID ${d.id})`).join(", ") +
+      `. Preise und Details sind in den Deal-Karten sichtbar — keine Preise im Text erwähnen.`;
 
     return { summary, deals };
   } catch (err) {
@@ -457,11 +457,6 @@ NUTZER-PRÄFERENZEN (standardmässig berücksichtigen, ausser der Nutzer fragt e
                     route: `${d.origin_iata}→${d.destination_iata}`,
                     airline: d.airline,
                     cabin: d.cabin_class,
-                    price: `${d.price} ${d.currency}`,
-                    duration: d.flight_duration_display,
-                    baggage: d.baggage_included
-                      ? `${d.baggage_allowance_kg ?? "?"} kg`
-                      : "Kein Gepäck",
                     period: d.travel_period_display,
                     miles: d.miles,
                     link: d.skyscanner_url,
