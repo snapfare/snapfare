@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { Resend } from "npm:resend@4.0.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Resend } from "resend";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 const supabaseAdmin = createClient(
@@ -20,7 +20,7 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { email, location } = await req.json();
+    const { email, redirectTo } = await req.json();
 
     if (!email || !email.includes("@")) {
       return new Response(
@@ -31,71 +31,33 @@ const handler = async (req: Request): Promise<Response> => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Check if already unsubscribed — hard stop (business rule)
-    const { data: existing } = await supabaseAdmin
-      .from("subscribers")
-      .select("status, tier")
-      .eq("email", normalizedEmail)
-      .single();
+    // Generate a signed recovery link via the Supabase admin API
+    const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      type: "recovery",
+      email: normalizedEmail,
+      options: {
+        redirectTo: redirectTo ?? "https://snapfare-dev.netlify.app/reset-password",
+      },
+    });
 
-    if (existing?.status === "unsubscribed") {
+    if (linkError || !data?.properties?.action_link) {
+      console.error("generateLink error:", linkError);
       return new Response(
-        JSON.stringify({ success: false, error: "Unsubscribed" }),
-        { status: 409, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    if (existing?.status === "active") {
-      // Already subscribed — send them the welcome email anyway (they re-requested it)
-      // but do NOT re-upsert (preserves their current tier, including premium)
-      try {
-        await resend.emails.send({
-          from: "SnapFare <noreply@basics-db.ch>",
-          to: [normalizedEmail],
-          subject: "Willkommen bei SnapFare! 🎉",
-          html: buildWelcomeEmailHtml(),
-        });
-        console.log("Welcome email resent to existing subscriber:", normalizedEmail);
-      } catch (emailErr) {
-        console.error("Email send error (existing subscriber):", emailErr);
-      }
-      return new Response(
-        JSON.stringify({ success: true, message: "Already subscribed, email sent" }),
-        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    // Upsert subscriber with status = 'active' (single opt-in, consistent with deployed system)
-    const { error: upsertError } = await supabaseAdmin
-      .from("subscribers")
-      .upsert(
-        {
-          email: normalizedEmail,
-          status: "active",
-          tier: "free",
-          source: location ? `web:${location}` : "web",
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "email" }
-      );
-
-    if (upsertError) {
-      console.error("Subscriber upsert error:", upsertError);
-      return new Response(
-        JSON.stringify({ success: false, error: "Database error" }),
+        JSON.stringify({ success: false, error: "Could not generate reset link" }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    // Send welcome email
+    const resetUrl = data.properties.action_link;
+
     const emailResponse = await resend.emails.send({
       from: "SnapFare <noreply@basics-db.ch>",
       to: [normalizedEmail],
-      subject: "Willkommen bei SnapFare! 🎉",
-      html: buildWelcomeEmailHtml(),
+      subject: "Passwort zurücksetzen 🔑",
+      html: buildResetEmailHtml(resetUrl),
     });
 
-    console.log("Subscriber added and email sent:", normalizedEmail, emailResponse);
+    console.log("Password reset email sent to:", normalizedEmail, emailResponse);
 
     return new Response(
       JSON.stringify({ success: true, data: emailResponse }),
@@ -103,7 +65,7 @@ const handler = async (req: Request): Promise<Response> => {
     );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("confirm function error:", message);
+    console.error("send-password-reset-email error:", message);
     return new Response(
       JSON.stringify({ success: false, error: message }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -111,14 +73,14 @@ const handler = async (req: Request): Promise<Response> => {
   }
 };
 
-function buildWelcomeEmailHtml(): string {
+function buildResetEmailHtml(resetUrl: string): string {
   return `
 <!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Willkommen bei SnapFare</title>
+  <title>Passwort zurücksetzen</title>
 </head>
 <body style="margin:0;padding:0;background-color:#0b1120;-webkit-font-smoothing:antialiased;">
   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0b1120;">
@@ -138,34 +100,44 @@ function buildWelcomeEmailHtml(): string {
             </td>
           </tr>
 
-          <!-- Welcome / Intro -->
+          <!-- Icon + Title -->
           <tr>
-            <td style="padding:2px 24px 8px 24px;text-align:center;">
-              <h2 style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:20px;line-height:34px;color:#e5e7eb;">
-                Willkommen an Bord! 🚀
+            <td style="padding:4px 24px 8px 24px;text-align:center;">
+              <div style="margin:0 auto 12px auto;width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#1e3a5f,#1e2d5a);border:1px solid rgba(96,165,250,0.25);display:flex;align-items:center;justify-content:center;">
+                <span style="font-size:26px;line-height:52px;">🔑</span>
+              </div>
+              <h2 style="margin:0 0 8px 0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:20px;line-height:28px;color:#e5e7eb;font-weight:700;">
+                Passwort zurücksetzen
               </h2>
-              <p style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px;line-height:22px;color:#cbd5e1;text-align:center;">
-                Vielen Dank für deine Anmeldung bei SnapFare! Du bist jetzt dabei – wir schicken dir regelmässig die besten Flugdeals ab der Schweiz.
+              <p style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px;line-height:22px;color:#cbd5e1;text-align:center;max-width:440px;margin:0 auto;">
+                Du hast eine Anfrage zum Zurücksetzen deines SnapFare-Passworts erhalten. Klicke auf den Button, um ein neues Passwort zu setzen.
               </p>
             </td>
           </tr>
 
-          <!-- What happens next -->
+          <!-- CTA -->
+          <tr>
+            <td style="padding:24px 24px 8px 24px;text-align:center;">
+              <a href="${resetUrl}" target="_blank"
+                 style="display:inline-block;background:#2264f5;color:#ffffff;text-decoration:none;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:15px;font-weight:700;padding:14px 32px;border-radius:12px;border:1px solid rgba(255,255,255,0.06);">
+                Passwort jetzt zurücksetzen
+              </a>
+            </td>
+          </tr>
+
+          <!-- Security note -->
           <tr>
             <td style="padding:18px 24px 4px 24px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
-                     style="border-radius:14px;background:linear-gradient(135deg,#022c22,#0b1120);border:1px solid rgba(16,185,129,0.25);">
+                     style="border-radius:14px;background:linear-gradient(135deg,#1c1f2e,#0b1120);border:1px solid rgba(255,255,255,0.07);">
                 <tr>
-                  <td style="padding:18px 18px 16px 18px;">
-                    <h3 style="margin:0 0 10px 0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:16px;line-height:22px;color:#bbf7d0;font-weight:600;text-align:center;">
-                      Was passiert als nächstes?
-                    </h3>
-                    <ul style="margin:0;padding:0 0 0 18px;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:13px;line-height:20px;color:#d1fae5;">
-                      <li style="margin-bottom:4px;">🔍 Du erhältst regelmässig Newsletter mit den besten Flugdeals ab der Schweiz.</li>
-                      <li style="margin-bottom:4px;">📱 Bald bekommst du Zugang zur personalisierten Flugsuche mit 1-Klick-Buchung.</li>
-                      <li style="margin-bottom:4px;">🎯 Optional kannst du später Premium dazubuchen (Business &amp; Meilendeals).</li>
-                      <li>💰 Ziel: Ab der ersten Buchung möglichst viel sparen – ganz ohne Aufwand für dich.</li>
-                    </ul>
+                  <td style="padding:16px 18px;">
+                    <p style="margin:0 0 6px 0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:13px;line-height:20px;color:#9ca3af;">
+                      ⚠️ <strong style="color:#d1d5db;">Nicht du?</strong> Wenn du kein neues Passwort angefordert hast, kannst du diese E-Mail einfach ignorieren — dein Konto bleibt unverändert.
+                    </p>
+                    <p style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:12px;line-height:18px;color:#6b7280;">
+                      Der Link ist 24 Stunden gültig.
+                    </p>
                   </td>
                 </tr>
               </table>
@@ -176,7 +148,7 @@ function buildWelcomeEmailHtml(): string {
           <tr>
             <td style="padding:20px 24px 20px 24px;text-align:center;">
               <p style="margin:0 0 4px 0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px;line-height:20px;color:#cbd5e1;">
-                Viel Spass beim Stöbern &amp; danke für dein Vertrauen!
+                Viel Spaß beim nächsten Deal-Hunting!
               </p>
               <p style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px;line-height:20px;color:#e5e7eb;font-weight:600;">
                 Dein SnapFare Team
@@ -188,7 +160,7 @@ function buildWelcomeEmailHtml(): string {
           <tr>
             <td style="padding:16px 24px 18px 24px;border-top:1px solid #111827;text-align:center;background:#020617;">
               <p style="margin:0 0 6px 0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:11px;line-height:16px;color:#6b7280;">
-                Du erhältst diese E-Mail, weil du dich bei SnapFare angemeldet hast.
+                Du erhältst diese E-Mail, weil für dein SnapFare-Konto ein Passwort-Reset angefordert wurde.
               </p>
               <p style="margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:11px;line-height:16px;color:#4b5563;">
                 © 2026 SnapFare. Alle Rechte vorbehalten.
