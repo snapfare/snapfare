@@ -285,7 +285,7 @@ const Dashboard = () => {
           {/* Preferences side panel */}
           {showPrefs && (
             <aside className="w-full lg:w-72 flex-shrink-0">
-              <div className="bg-white/5 border border-white/10 rounded-xl p-5 sticky top-24 max-h-[calc(100vh-8rem)] overflow-y-auto">
+              <div className="bg-white/5 border border-white/10 rounded-xl p-5 lg:sticky lg:top-24 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="font-semibold text-white flex items-center gap-2 text-sm">
                     <Settings className="w-4 h-4 text-green-400" />

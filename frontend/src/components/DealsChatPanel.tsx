@@ -85,8 +85,10 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
 
   useEffect(() => {
     const last = messages[messages.length - 1];
-    if (last?.role === "assistant") {
-      lastMsgRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    const container = messagesContainerRef.current;
+    if (last?.role === "assistant" && lastMsgRef.current && container) {
+      const offset = lastMsgRef.current.offsetTop - container.offsetTop;
+      container.scrollTo({ top: offset, behavior: "smooth" });
     } else {
       scrollToBottom();
     }
@@ -291,7 +293,7 @@ const DealsChatPanel: React.FC<DealsChatPanelProps> = ({ userName }) => {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Frag mich nach Flugdeals..."
-              className="flex-1 text-sm bg-white/5 border-white/10 text-white placeholder:text-gray-600 focus:border-green-400/50 focus:ring-green-400/20 rounded-xl"
+              className="flex-1 text-base bg-white/5 border-white/10 text-white placeholder:text-gray-600 focus:border-green-400/50 focus:ring-green-400/20 rounded-xl"
               disabled={isLoading || isAtLimit || dailyCount === null}
             />
             <Button
